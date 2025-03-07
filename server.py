@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Python server for MLX model inference - Alternating models for movement
+# Python server for MLX model inference - Alternating models with enemy avoidance
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -47,6 +47,12 @@ def root_endpoint():
     hit_wall = data.get('hit_wall', False)
     previous_actions = data.get('previous_actions', [])
     current_grid = data.get('current_grid', {})
+    enemy_position = data.get('enemy_position', {})
+    enemy_grid = data.get('enemy_grid', {})
+    health = data.get('health', 100)
+    is_being_attacked = data.get('is_being_attacked', False)
+    distance_to_enemy = data.get('distance_to_enemy', 999)
+    direction_to_enemy = data.get('direction_to_enemy', {"x": 0, "z": 0})
     
     if not model_id:
         return jsonify({"error": "Missing model_id"}), 400
@@ -61,25 +67,39 @@ def root_endpoint():
         grid_x = current_grid.get('x', 0)
         grid_z = current_grid.get('z', 0)
         
-        # Create a prompt focused on grid coordinates and previous moves
-        movement_prompt = f"""You are an AI controlling a 3D character in a virtual environment. You decide what the character does next based on its current position and previous movements.
+        # Create a prompt focused on grid coordinates, enemy position, and health
+        movement_prompt = f"""You are an AI controlling a 3D character in a virtual environment with an enemy. You decide what the character does next based on its current position, the enemy's position, and your health.
 
 CURRENT POSITION: X:{position.get('x', 0):.1f}, Y:{position.get('y', 0):.1f}, Z:{position.get('z', 0):.1f}
 CURRENT GRID: {grid_x}, {grid_z}
+HEALTH: {health}%{' (BEING ATTACKED!)' if is_being_attacked else ''}
+
+ENEMY POSITION: X:{enemy_position.get('x', 0):.1f}, Y:{enemy_position.get('y', 0):.1f}, Z:{enemy_position.get('z', 0):.1f}
+ENEMY GRID: {enemy_grid.get('x', 0)}, {enemy_grid.get('z', 0)}
+DISTANCE TO ENEMY: {distance_to_enemy:.1f} units
+
 ENVIRONMENT BOUNDARIES: Walls at x=±50 and z=±50
 SPECIAL FEATURES: Wooden platform at (10, 0.5, 10)
 {' The character just hit a wall.' if hit_wall else ''}
 
 PREVIOUS ACTIONS: {json.dumps(previous_actions[-5:] if previous_actions else [])}
 
-Based on the character's current grid position and previous movements, decide what the character should do next.
+IMPORTANT RULES FOR ENEMY AVOIDANCE:
+1. If the enemy is closer than 10 units, MOVE AWAY from the enemy in the OPPOSITE direction
+2. Never move directly toward the enemy
+3. Use diagonal movements to escape when the enemy is close
+4. If your health is below 50%, prioritize getting far away from the enemy
+5. Try to move toward areas the enemy hasn't visited recently
+6. If being attacked, use sprint to quickly escape
+
+Based on the character's current grid position, the enemy's position, and your health, decide what the character should do next.
 
 Generate ONE natural, lifelike movement. Return ONLY valid JSON with a single object containing:
-- "action": one of [moveForward, moveBackward, moveLeft, moveRight, jump, sprint, idle, explore, lookAround]
+- "action": one of [moveForward, moveBackward, moveLeft, moveRight, moveDiagonalForwardLeft, moveDiagonalForwardRight, moveDiagonalBackwardLeft, moveDiagonalBackwardRight, jump, sprint, idle, explore, lookAround]
 - "duration": time in seconds (between 0.5 and 4)
-- "thought": a brief description of the character's intention (like "Moving to next grid" or "Exploring current area")
+- "thought": a brief description of the character's intention (like "Evading enemy" or "Moving to safer grid")
 
-Make your decision interesting and varied. Consider the grid position when planning movements."""
+Make your decision strategic to avoid the enemy and maintain your health."""
         
         # Format prompt for chat if needed
         if hasattr(tokenizer, 'chat_template') and tokenizer.chat_template is not None:
