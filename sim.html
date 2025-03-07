@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI-Controlled 3D Character Viewer (Local Models)</title>
+    <title>AI-Controlled 3D Character - Alternating Models</title>
     <style>
         body { 
             margin: 0; 
@@ -108,6 +108,26 @@
             background: #555;
             cursor: not-allowed;
         }
+        #grid-info {
+            position: absolute;
+            top: 10px;
+            left: 320px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            max-width: 300px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        }
+        #grid-content {
+            margin: 10px 0;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+        #active-model {
+            font-weight: bold;
+            color: #4CAF50;
+        }
     </style>
 </head>
 <body>
@@ -119,14 +139,30 @@
         <div id="debug-info"></div>
     </div>
 
+    <div id="grid-info">
+        <h2>Grid Position</h2>
+        <div id="grid-content">Waiting for movement...</div>
+        <div id="active-model">Current Model: None</div>
+    </div>
+
     <div id="model-selector">
         <h2>Model Selection</h2>
-        <select id="model-choice">
-            <option value="nidum/Nidum-Llama-3.2-3B-Uncensored-MLX-4bit">Nidum-Llama-3.2-3B</option>
-            <option value="mlx-community/Llama-3.2-1B-Instruct-4bit">Llama-3.2-1B</option>
-        </select>
-        <button id="load-model-btn">Load Model</button>
-        <div id="model-status">No model loaded</div>
+        <div>
+            <label>Model 1:</label>
+            <select id="model-1-choice">
+                <option value="mlx-community/Llama-3.2-1B-Instruct-4bit">Llama-3.2-1B</option>
+                <option value="nidum/Nidum-Llama-3.2-3B-Uncensored-MLX-4bit">Nidum-Llama-3.2-3B</option>
+            </select>
+        </div>
+        <div style="margin-top: 10px;">
+            <label>Model 2:</label>
+            <select id="model-2-choice">
+                <option value="nidum/Nidum-Llama-3.2-3B-Uncensored-MLX-4bit">Nidum-Llama-3.2-3B</option>
+                <option value="mlx-community/Llama-3.2-1B-Instruct-4bit">Llama-3.2-1B</option>
+            </select>
+        </div>
+        <button id="load-models-btn">Load Models</button>
+        <div id="model-status">No models loaded</div>
     </div>
 
     <div id="environment-info">
@@ -152,13 +188,39 @@
         // Python server endpoint for model inference
         const PYTHON_SERVER_URL = 'http://localhost:5000';
 
-        // AI Movement Control with local model inference
-        async function getAIMovementInstructions(currentPosition, previousActions = [], hitWall = false) {
+        // Grid size for position tracking (10x10 grid)
+        const GRID_SIZE = 10;
+
+        // Get current grid position from world coordinates
+        function getGridPosition(position) {
+            return {
+                x: Math.floor(position.x / GRID_SIZE),
+                z: Math.floor(position.z / GRID_SIZE)
+            };
+        }
+
+        // AI Movement Control with alternating models
+        async function getAIMovementInstructions(currentPosition, previousActions = [], hitWall = false, useModel1 = true) {
             try {
                 const statusElement = document.getElementById('ai-thinking');
                 statusElement.textContent = "AI is thinking about what to do next...";
                 
-                const modelChoice = document.getElementById('model-choice').value;
+                // Determine which model to use
+                const modelChoice = useModel1 ? 
+                    document.getElementById('model-1-choice').value : 
+                    document.getElementById('model-2-choice').value;
+                
+                // Update active model display
+                document.getElementById('active-model').textContent = 
+                    `Current Model: ${useModel1 ? 'Model 1' : 'Model 2'} (${modelChoice.split('/').pop()})`;
+                
+                // Calculate current grid position
+                const currentGrid = getGridPosition(currentPosition);
+                
+                // Update grid info display
+                document.getElementById('grid-content').innerHTML = 
+                    `Current Grid: (${currentGrid.x}, ${currentGrid.z})<br>` +
+                    `World Position: (${currentPosition.x.toFixed(1)}, ${currentPosition.y.toFixed(1)}, ${currentPosition.z.toFixed(1)})`;
                 
                 // Send request to local Python server
                 const response = await fetch(PYTHON_SERVER_URL, {
@@ -173,21 +235,9 @@
                             y: currentPosition.y,
                             z: currentPosition.z
                         },
+                        current_grid: currentGrid,
                         hit_wall: hitWall,
-                        previous_actions: previousActions.slice(-3),
-                        prompt: `You are an AI controlling a 3D character in a virtual environment with a grassy field and a wooden platform at (10, 0.5, 10). You decide what the character does next based on its current state and surroundings. The environment has walls at the boundaries (±50 on x and z axes).
-
-The character is at position (${currentPosition.x.toFixed(1)}, ${currentPosition.y.toFixed(1)}, ${currentPosition.z.toFixed(1)}) in a grassy field with a wooden platform at (10, 0.5, 10). The environment has walls at x=±50 and z=±50.
-${hitWall ? 'The character just hit a wall.' : ''}
-                        
-Generate ONE natural, lifelike movement for the character to perform next. Return ONLY valid JSON with a single object containing:
-- "action": one of [moveForward, moveBackward, moveLeft, moveRight, jump, sprint, idle, explore, lookAround]
-- "duration": time in seconds (between 0.5 and 4)
-- "thought": a brief description of the character's intention (like "Heading to the platform" or "Getting tired, need to rest")
-
-Create an action that would make sense for a character exploring this environment, possibly interacting with the platform. Make the movement feel natural and purposeful. Avoid actions that would cause the character to hit walls or fall off edges.
-
-Previous actions: ${JSON.stringify(previousActions.slice(-3))}`
+                        previous_actions: previousActions.slice(-5)
                     })
                 });
                 
@@ -344,6 +394,41 @@ Previous actions: ${JSON.stringify(previousActions.slice(-3))}`
         westWall.castShadow = true;
         westWall.receiveShadow = true;
         scene.add(westWall);
+
+        // Add grid markers to visualize the grid
+        function addGridMarkers() {
+            const gridLineGeometry = new THREE.BoxGeometry(0.1, 0.1, 100);
+            const gridLineMaterial = new THREE.MeshBasicMaterial({ color: 0x444444, transparent: true, opacity: 0.3 });
+            
+            // Add grid lines along X axis
+            for (let i = -5; i <= 5; i++) {
+                const xLine = new THREE.Mesh(gridLineGeometry, gridLineMaterial);
+                xLine.position.set(i * GRID_SIZE, 0.05, 0);
+                scene.add(xLine);
+            }
+            
+            // Add grid lines along Z axis
+            const gridLineGeometryX = new THREE.BoxGeometry(100, 0.1, 0.1);
+            for (let i = -5; i <= 5; i++) {
+                const zLine = new THREE.Mesh(gridLineGeometryX, gridLineMaterial);
+                zLine.position.set(0, 0.05, i * GRID_SIZE);
+                scene.add(zLine);
+            }
+            
+            // Add grid cell markers
+            const markerGeometry = new THREE.BoxGeometry(0.5, 0.1, 0.5);
+            const markerMaterial = new THREE.MeshBasicMaterial({ color: 0x666666 });
+            
+            for (let x = -5; x <= 5; x++) {
+                for (let z = -5; z <= 5; z++) {
+                    const marker = new THREE.Mesh(markerGeometry, markerMaterial);
+                    marker.position.set(x * GRID_SIZE, 0.1, z * GRID_SIZE);
+                    scene.add(marker);
+                }
+            }
+        }
+        
+        addGridMarkers();
 
         // Add environment objects (trees and rocks)
         function addEnvironmentObjects() {
@@ -505,8 +590,10 @@ Previous actions: ${JSON.stringify(previousActions.slice(-3))}`
         let sequenceCompleted = false;
         let lastThoughtChangeTime = 0;
         let currentThought = "";
-        let modelLoaded = false;
+        let model1Loaded = false;
+        let model2Loaded = false;
         let hitWall = false;  // Track wall collisions
+        let useModel1 = true; // Toggle between models
 
         // Model loading
         const dracoLoader = new DRACOLoader();
@@ -684,44 +771,75 @@ Previous actions: ${JSON.stringify(previousActions.slice(-3))}`
         });
 
         // Model loading button
-        document.getElementById('load-model-btn').addEventListener('click', async () => {
-            const modelChoice = document.getElementById('model-choice').value;
+        document.getElementById('load-models-btn').addEventListener('click', async () => {
+            const model1Choice = document.getElementById('model-1-choice').value;
+            const model2Choice = document.getElementById('model-2-choice').value;
             const modelStatus = document.getElementById('model-status');
-            const loadButton = document.getElementById('load-model-btn');
+            const loadButton = document.getElementById('load-models-btn');
             
             loadButton.disabled = true;
-            modelStatus.textContent = `Loading ${modelChoice}...`;
+            modelStatus.textContent = `Loading models...`;
             
             try {
-                // Send request to check if model is loaded
-                const response = await fetch(`${PYTHON_SERVER_URL}/check-model`, {
+                // Check model 1
+                const model1Response = await fetch(`${PYTHON_SERVER_URL}/check-model`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        model_id: modelChoice
+                        model_id: model1Choice
                     })
                 });
                 
-                const data = await response.json();
+                const model1Data = await model1Response.json();
                 
-                if (data.success) {
-                    modelStatus.textContent = `Model ${modelChoice} loaded successfully`;
-                    modelLoaded = true;
+                if (model1Data.success) {
+                    modelStatus.textContent = `Model 1 loaded. Loading Model 2...`;
+                    model1Loaded = true;
+                } else {
+                    modelStatus.textContent = `Error loading Model 1: ${model1Data.error}`;
+                    loadButton.disabled = false;
+                    return;
+                }
+                
+                // Check model 2
+                const model2Response = await fetch(`${PYTHON_SERVER_URL}/check-model`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        model_id: model2Choice
+                    })
+                });
+                
+                const model2Data = await model2Response.json();
+                
+                if (model2Data.success) {
+                    modelStatus.textContent = `Both models loaded successfully`;
+                    model2Loaded = true;
                     
-                    // Start AI instructions once model is loaded
+                    // Start AI instructions once models are loaded
                     if (character.isLoaded && !isLoadingInstructions) {
                         isLoadingInstructions = true;
-                        aiInstructions = await getAIMovementInstructions(character.position, character.actionHistory, hitWall);
+                        
+                        // Get first movement instruction using Model 1
+                        aiInstructions = await getAIMovementInstructions(
+                            character.position, 
+                            character.actionHistory, 
+                            hitWall,
+                            true // Start with Model 1
+                        );
+                        
                         isLoadingInstructions = false;
                     }
                 } else {
-                    modelStatus.textContent = `Error: ${data.error}`;
+                    modelStatus.textContent = `Error loading Model 2: ${model2Data.error}`;
                 }
             } catch (error) {
                 modelStatus.textContent = `Connection error: ${error.message}`;
-                console.error('Error checking model:', error);
+                console.error('Error checking models:', error);
             }
             
             loadButton.disabled = false;
@@ -746,7 +864,7 @@ Previous actions: ${JSON.stringify(previousActions.slice(-3))}`
                 character.mixer.update(delta);
             }
             
-            if (!character.isLoaded || !modelLoaded || isLoadingInstructions) {
+            if (!character.isLoaded || !model1Loaded || !model2Loaded || isLoadingInstructions) {
                 renderer.render(scene, camera);
                 return;
             }
@@ -905,8 +1023,8 @@ Previous actions: ${JSON.stringify(previousActions.slice(-3))}`
                         character.position.x = newPositionX.x;
                     }
                     
-                    // Try moving only in Z direction
-                    const newPositionZ = character.position.clone();
+                                        // Try moving only in Z direction
+                                        const newPositionZ = character.position.clone();
                     newPositionZ.z += character.velocity.z;
                     
                     if (!checkBoundaryCollision(newPositionZ)) {
@@ -934,7 +1052,8 @@ Previous actions: ${JSON.stringify(previousActions.slice(-3))}`
                             x: character.position.x,
                             y: character.position.y,
                             z: character.position.z
-                        }
+                        },
+                        grid: getGridPosition(character.position)
                     });
                     
                     instructionTimer = 0;
@@ -957,11 +1076,15 @@ Previous actions: ${JSON.stringify(previousActions.slice(-3))}`
                         document.getElementById('ai-thinking').textContent = "Planning next action...";
                         
                         try {
-                            // Get a single new instruction for more dynamic behavior
+                            // Toggle between models for each new instruction
+                            useModel1 = !useModel1;
+                            
+                            // Get a single new instruction from the alternate model
                             aiInstructions = await getAIMovementInstructions(
                                 character.position, 
                                 character.actionHistory,
-                                hitWall
+                                hitWall,
+                                useModel1
                             );
                             currentInstructionIndex = 0;
                             instructionTimer = 0;
