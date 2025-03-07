@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI-Controlled 3D Character - Alternating Models</title>
+    <title>AI-Controlled 3D Character - Enemy Avoidance</title>
     <style>
         body { 
             margin: 0; 
@@ -128,6 +128,35 @@
             font-weight: bold;
             color: #4CAF50;
         }
+        #health-bar-container {
+            margin-top: 10px;
+        }
+        #health-bar {
+            height: 10px;
+            background: #333;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+        #health-fill {
+            height: 100%;
+            background: linear-gradient(to right, #ff3300, #ff6600);
+            width: 100%;
+            transition: width 0.3s linear;
+        }
+        #health-text {
+            font-size: 12px;
+            text-align: center;
+            margin-top: 3px;
+        }
+        #enemy-info {
+            margin-top: 10px;
+            font-size: 14px;
+            color: #ff6666;
+        }
+        .danger {
+            color: #ff3333;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
@@ -136,12 +165,17 @@
         <div id="ai-status">Initializing AI system...</div>
         <div class="progress-bar"><div id="action-progress" class="progress-fill"></div></div>
         <div id="ai-thinking"></div>
+        <div id="health-bar-container">
+            <div id="health-bar"><div id="health-fill"></div></div>
+            <div id="health-text">Health: 100%</div>
+        </div>
         <div id="debug-info"></div>
     </div>
 
     <div id="grid-info">
         <h2>Grid Position</h2>
         <div id="grid-content">Waiting for movement...</div>
+        <div id="enemy-info">Enemy: Not detected</div>
         <div id="active-model">Current Model: None</div>
     </div>
 
@@ -200,7 +234,7 @@
         }
 
         // AI Movement Control with alternating models
-        async function getAIMovementInstructions(currentPosition, previousActions = [], hitWall = false, useModel1 = true) {
+        async function getAIMovementInstructions(currentPosition, previousActions = [], hitWall = false, useModel1 = true, enemyPosition = null, health = 100, isBeingAttacked = false) {
             try {
                 const statusElement = document.getElementById('ai-thinking');
                 statusElement.textContent = "AI is thinking about what to do next...";
@@ -210,6 +244,19 @@
                     document.getElementById('model-1-choice').value : 
                     document.getElementById('model-2-choice').value;
                 
+                // Calculate distance to enemy for better decision making
+                const distanceToEnemy = enemyPosition ? 
+                    Math.sqrt(
+                        Math.pow(currentPosition.x - enemyPosition.x, 2) + 
+                        Math.pow(currentPosition.z - enemyPosition.z, 2)
+                    ) : 999;
+                
+                // Calculate direction to enemy (for avoidance)
+                const directionToEnemy = enemyPosition ? {
+                    x: enemyPosition.x - currentPosition.x,
+                    z: enemyPosition.z - currentPosition.z
+                } : null;
+                
                 // Update active model display
                 document.getElementById('active-model').textContent = 
                     `Current Model: ${useModel1 ? 'Model 1' : 'Model 2'} (${modelChoice.split('/').pop()})`;
@@ -217,10 +264,28 @@
                 // Calculate current grid position
                 const currentGrid = getGridPosition(currentPosition);
                 
+                // Calculate enemy grid position
+                const enemyGrid = enemyPosition ? getGridPosition(enemyPosition) : { x: -999, z: -999 };
+                
                 // Update grid info display
                 document.getElementById('grid-content').innerHTML = 
                     `Current Grid: (${currentGrid.x}, ${currentGrid.z})<br>` +
                     `World Position: (${currentPosition.x.toFixed(1)}, ${currentPosition.y.toFixed(1)}, ${currentPosition.z.toFixed(1)})`;
+                
+                // Update enemy info
+                if (enemyPosition) {
+                    const distance = Math.sqrt(
+                        Math.pow(currentPosition.x - enemyPosition.x, 2) + 
+                        Math.pow(currentPosition.z - enemyPosition.z, 2)
+                    ).toFixed(1);
+                    
+                    const dangerClass = isBeingAttacked ? 'danger' : '';
+                    document.getElementById('enemy-info').innerHTML = 
+                        `<span class="${dangerClass}">Enemy: Grid (${enemyGrid.x}, ${enemyGrid.z})<br>` +
+                        `Distance: ${distance} units${isBeingAttacked ? ' - ATTACKING!' : ''}</span>`;
+                } else {
+                    document.getElementById('enemy-info').textContent = "Enemy: Not detected";
+                }
                 
                 // Send request to local Python server
                 const response = await fetch(PYTHON_SERVER_URL, {
@@ -237,7 +302,13 @@
                         },
                         current_grid: currentGrid,
                         hit_wall: hitWall,
-                        previous_actions: previousActions.slice(-5)
+                        previous_actions: previousActions.slice(-5),
+                        enemy_position: enemyPosition || { x: 0, y: 0, z: 0 },
+                        enemy_grid: enemyGrid,
+                        health: health,
+                        is_being_attacked: isBeingAttacked,
+                        distance_to_enemy: distanceToEnemy,
+                        direction_to_enemy: directionToEnemy
                     })
                 });
                 
@@ -321,8 +392,8 @@
         ground.receiveShadow = true;
         scene.add(ground);
 
-        // Add wooden platform (new floor)
-        const platformGeometry = new THREE.BoxGeometry(10, 0.5, 10);
+                // Add wooden platform (new floor)
+                const platformGeometry = new THREE.BoxGeometry(10, 0.5, 10);
         const platformMaterial = new THREE.MeshStandardMaterial({
             color: 0x8b4513, // Wood-like brown
             roughness: 0.7,
@@ -547,7 +618,8 @@
             cameraSmoothing: 0.1,
             lookAtHeight: 1.0,
             rotationSpeed: 0.1,
-            collisionRadius: 0.5  // Added for collision detection
+            collisionRadius: 0.5,  // Added for collision detection
+            diagonalSpeedMultiplier: 0.7 // Reduce diagonal movement speed to avoid being too fast
         };
 
         // Character state
@@ -567,7 +639,26 @@
             isLookingAround: false,
             previousState: null,
             isLoaded: false,
-            actionHistory: []
+            actionHistory: [],
+            health: 100
+        };
+
+        // Enemy state
+        const enemy = {
+            model: null,
+            mixer: null,
+            animations: {},
+            currentAnimation: null,
+            position: new THREE.Vector3(-30, 1, -30), // Start enemy far from player
+            velocity: new THREE.Vector3(0, 0, 0),
+            rotation: 0,
+            isGrounded: true,
+            isMoving: false,
+            isLoaded: false,
+            speed: 0.05, // Slower than player but persistent
+            detectionRadius: 40, // How far the enemy can detect the player
+            attackRadius: 1.5, // How close the enemy needs to be to attack
+            isAttacking: false
         };
 
         // Camera state
@@ -594,6 +685,7 @@
         let model2Loaded = false;
         let hitWall = false;  // Track wall collisions
         let useModel1 = true; // Toggle between models
+        let isBeingAttacked = false; // Track if enemy is attacking
 
         // Model loading
         const dracoLoader = new DRACOLoader();
@@ -602,8 +694,9 @@
         const loader = new GLTFLoader();
         loader.setDRACOLoader(dracoLoader);
         
-        document.getElementById('debug-info').innerHTML = 'Loading model...';
+        document.getElementById('debug-info').innerHTML = 'Loading character model...';
         
+        // Load player character
         loader.load(
             'character.glb',
             async function (gltf) {
@@ -651,23 +744,96 @@
                     }
                 }
                 
-                document.getElementById('debug-info').innerHTML = 'Model loaded successfully<br>Animations: ' + 
-                    Object.keys(character.animations).join(', ');
+                document.getElementById('debug-info').innerHTML = 'Character model loaded. Loading enemy...';
+                
+                // Now load the enemy model (same model but with black material)
+                loader.load(
+                    'character.glb',
+                    function (enemyGltf) {
+                        enemy.model = enemyGltf.scene;
+                        enemy.isLoaded = true;
+                        
+                        // Center the model
+                        const enemyBox = new THREE.Box3().setFromObject(enemy.model);
+                        const enemyCenter = enemyBox.getCenter(new THREE.Vector3());
+                        enemy.model.position.x = -enemyCenter.x;
+                        enemy.model.position.z = -enemyCenter.z;
+                        
+                        // Scale if needed
+                        const enemySize = enemyBox.getSize(new THREE.Vector3());
+                        const enemyMaxDim = Math.max(enemySize.x, enemySize.y, enemySize.z);
+                        if (enemyMaxDim > 2) {
+                            const enemyScale = 2 / enemyMaxDim;
+                            enemy.model.scale.set(enemyScale, enemyScale, enemyScale);
+                        }
+                        
+                        // Set position
+                        enemy.model.position.copy(enemy.position);
+                      
+                        enemy.model.traverse(function(node) {
+                            if (node.isMesh) {
+                                node.castShadow = true;
+                                node.receiveShadow = true;
+                                
+                               
+                                const blackMaterial = new THREE.MeshStandardMaterial({
+                                    color: 0x000000,
+                                    roughness: 0.7,
+                                    metalness: 0.3
+                                });
+                                
+                               
+                                node.material = blackMaterial;
+                            }
+                        });
+                        
+                        scene.add(enemy.model);
+                        
+                        // Set up enemy animations
+                        if (enemyGltf.animations && enemyGltf.animations.length) {
+                            enemy.mixer = new THREE.AnimationMixer(enemy.model);
+                            enemyGltf.animations.forEach((clip) => {
+                                const name = clip.name.toUpperCase();
+                                enemy.animations[name] = enemy.mixer.clipAction(clip);
+                                enemy.animations[name].setLoop(THREE.LoopRepeat);
+                            });
+                            
+                            if (enemy.animations['IDLE']) {
+                                enemy.animations['IDLE'].play();
+                                enemy.currentAnimation = 'IDLE';
+                            } else if (enemyGltf.animations.length > 0) {
+                                const firstAnim = enemyGltf.animations[0].name.toUpperCase();
+                                enemy.animations[firstAnim].play();
+                                enemy.currentAnimation = firstAnim;
+                            }
+                        }
+                        
+                        document.getElementById('debug-info').innerHTML = 'All models loaded successfully';
+                    },
+                    function (progress) {
+                        const percent = (progress.loaded / progress.total * 100).toFixed(0);
+                        document.getElementById('debug-info').innerHTML = `Loading enemy model: ${percent}%`;
+                    },
+                    function (error) {
+                        console.error('Error loading enemy model:', error);
+                        document.getElementById('debug-info').innerHTML = 'Enemy model loading error: ' + error.message;
+                    }
+                );
                 
                 updateCameraPosition(true);
             },
             function (progress) {
                 const percent = (progress.loaded / progress.total * 100).toFixed(0);
-                document.getElementById('debug-info').innerHTML = `Loading model: ${percent}%`;
+                document.getElementById('debug-info').innerHTML = `Loading character model: ${percent}%`;
             },
             function (error) {
-                console.error('Error loading model:', error);
-                document.getElementById('debug-info').innerHTML = 'Model loading error: ' + error.message;
+                console.error('Error loading character model:', error);
+                document.getElementById('debug-info').innerHTML = 'Character model loading error: ' + error.message;
             }
         );
 
-        // Animation handling
-        function setAnimation(animName) {
+        // Animation handling for character
+        function setCharacterAnimation(animName) {
             if (!character.mixer || !character.animations[animName]) {
                 return;
             }
@@ -689,22 +855,42 @@
             }
         }
 
+        // Animation handling for enemy
+        function setEnemyAnimation(animName) {
+            if (!enemy.mixer || !enemy.animations[animName]) {
+                return;
+            }
+            
+            if (enemy.currentAnimation !== animName) {
+                const prevAnim = enemy.animations[enemy.currentAnimation];
+                const nextAnim = enemy.animations[animName];
+                
+                nextAnim.reset().fadeIn(0.2).play();
+                
+                if (prevAnim && prevAnim !== nextAnim) {
+                    prevAnim.fadeOut(0.2);
+                }
+                
+                enemy.currentAnimation = animName;
+            }
+        }
+
         // Ground detection with multiple surfaces
-        function checkGrounded() {
+        function checkGrounded(entity) {
             const raycaster = new THREE.Raycaster(
-                character.position.clone().add(new THREE.Vector3(0, 0.5, 0)),
+                entity.position.clone().add(new THREE.Vector3(0, 0.5, 0)),
                 new THREE.Vector3(0, -1, 0),
                 0,
                 characterControls.groundDetectionRayLength
             );
             const intersects = raycaster.intersectObjects([ground, platform, floor]);
             
-            character.isGrounded = intersects.length > 0;
-            if (character.isGrounded) {
-                character.position.y = intersects[0].point.y + characterControls.groundOffset;
+            entity.isGrounded = intersects.length > 0;
+            if (entity.isGrounded) {
+                entity.position.y = intersects[0].point.y + characterControls.groundOffset;
             }
             
-            return character.isGrounded;
+            return entity.isGrounded;
         }
 
         // Boundary collision detection
@@ -715,6 +901,105 @@
                 return true; // Collision detected
             }
             return false; // No collision
+        }
+
+        // Check if enemy is close enough to attack
+        function checkEnemyAttack() {
+            if (!character.isLoaded || !enemy.isLoaded) return false;
+            
+            const distance = character.position.distanceTo(enemy.position);
+            return distance <= enemy.attackRadius;
+        }
+
+        // Update enemy movement to follow player
+        function updateEnemyMovement(delta) {
+            if (!enemy.isLoaded || !character.isLoaded) return;
+            
+            // Calculate distance to player
+            const distanceToPlayer = enemy.position.distanceTo(character.position);
+            
+            // Only follow if within detection radius
+            if (distanceToPlayer <= enemy.detectionRadius) {
+                // Direction to player
+                const direction = new THREE.Vector3()
+                    .subVectors(character.position, enemy.position)
+                    .normalize();
+                
+                // Set velocity based on direction
+                enemy.velocity.x = direction.x * enemy.speed;
+                enemy.velocity.z = direction.z * enemy.speed;
+                
+                // Update enemy rotation to face player
+                enemy.rotation = Math.atan2(direction.x, direction.z);
+                if (enemy.model) {
+                    enemy.model.rotation.y = enemy.rotation;
+                }
+                
+                // Set animation
+                if (enemy.isAttacking) {
+                    if (enemy.animations['ATTACK']) {
+                        setEnemyAnimation('ATTACK');
+                    } else {
+                        setEnemyAnimation('IDLE');
+                    }
+                } else if (enemy.animations['WALK'] || enemy.animations['RUN']) {
+                    setEnemyAnimation(enemy.animations['WALK'] ? 'WALK' : 'RUN');
+                }
+                
+                enemy.isMoving = true;
+            } else {
+                // If player is out of range, stop moving
+                enemy.velocity.x = 0;
+                enemy.velocity.z = 0;
+                enemy.isMoving = false;
+                setEnemyAnimation('IDLE');
+            }
+            
+            // Apply movement
+            const newPosition = enemy.position.clone().add(
+                new THREE.Vector3(
+                    enemy.velocity.x,
+                    0,
+                    enemy.velocity.z
+                )
+            );
+            
+            // Check boundary collision
+            if (!checkBoundaryCollision(newPosition)) {
+                enemy.position.copy(newPosition);
+            }
+            
+            // Update model position
+            if (enemy.model) {
+                enemy.model.position.copy(enemy.position);
+            }
+            
+            // Check if enemy is close enough to attack
+            enemy.isAttacking = checkEnemyAttack();
+            
+            // Update attack status
+            isBeingAttacked = enemy.isAttacking;
+            
+            // Reduce health if being attacked
+            if (isBeingAttacked) {
+                character.health = Math.max(0, character.health - 1 * delta); // 1% damage per second
+                updateHealthDisplay();
+            }
+        }
+
+        // Update health display
+        function updateHealthDisplay() {
+            document.getElementById('health-fill').style.width = `${character.health}%`;
+            document.getElementById('health-text').textContent = `Health: ${Math.floor(character.health)}%`;
+            
+            // Add visual feedback when health is low
+            if (character.health < 30) {
+                document.getElementById('health-fill').style.background = 'linear-gradient(to right, #ff0000, #ff3300)';
+                document.getElementById('health-text').style.color = '#ff3333';
+            } else {
+                document.getElementById('health-fill').style.background = 'linear-gradient(to right, #ff3300, #ff6600)';
+                document.getElementById('health-text').style.color = '#ffffff';
+            }
         }
 
         // Camera positioning
@@ -829,7 +1114,10 @@
                             character.position, 
                             character.actionHistory, 
                             hitWall,
-                            true // Start with Model 1
+                            true, // Start with Model 1
+                            enemy.position,
+                            character.health,
+                            isBeingAttacked
                         );
                         
                         isLoadingInstructions = false;
@@ -860,16 +1148,25 @@
                 orbitControls.update();
             }
             
+            // Update character animation mixer
             if (character.mixer) {
                 character.mixer.update(delta);
             }
+            
+            // Update enemy animation mixer
+            if (enemy.mixer) {
+                enemy.mixer.update(delta);
+            }
+            
+            // Update enemy movement
+            updateEnemyMovement(delta);
             
             if (!character.isLoaded || !model1Loaded || !model2Loaded || isLoadingInstructions) {
                 renderer.render(scene, camera);
                 return;
             }
             
-            checkGrounded();
+            checkGrounded(character);
             
             if (!sequenceCompleted && aiInstructions.length > 0) {
                 const currentInstruction = aiInstructions[currentInstructionIndex];
@@ -919,11 +1216,31 @@
                         character.isMoving = true;
                         break;
                     case 'moveleft':
-                        moveDirection.add(right);
+                        moveDirection.sub(right);
                         character.isMoving = true;
                         break;
                     case 'moveright':
-                        moveDirection.sub(right);
+                        moveDirection.add(right);
+                        character.isMoving = true;
+                        break;
+                    case 'movediagonalforwardleft':
+                        moveDirection.add(forward).sub(right);
+                        moveDirection.multiplyScalar(characterControls.diagonalSpeedMultiplier);
+                        character.isMoving = true;
+                        break;
+                    case 'movediagonalforwardright':
+                        moveDirection.add(forward).add(right);
+                        moveDirection.multiplyScalar(characterControls.diagonalSpeedMultiplier);
+                        character.isMoving = true;
+                        break;
+                    case 'movediagonalbackwardleft':
+                        moveDirection.sub(forward).sub(right);
+                        moveDirection.multiplyScalar(characterControls.diagonalSpeedMultiplier);
+                        character.isMoving = true;
+                        break;
+                    case 'movediagonalbackwardright':
+                        moveDirection.sub(forward).add(right);
+                        moveDirection.multiplyScalar(characterControls.diagonalSpeedMultiplier);
                         character.isMoving = true;
                         break;
                     case 'sprint':
@@ -985,21 +1302,21 @@
                 
                 // Set appropriate animation based on character state
                 if (!character.isGrounded && character.velocity.y < 0) {
-                    setAnimation('FALL');
+                    setCharacterAnimation('FALL');
                 } else if (character.isJumping) {
-                    setAnimation('JUMP');
+                    setCharacterAnimation('JUMP');
                 } else if (character.isMoving) {
                     if (character.isSprinting && character.animations['RUN']) {
-                        setAnimation('RUN');
+                        setCharacterAnimation('RUN');
                     } else if (character.animations['WALK']) {
-                        setAnimation('WALK');
+                        setCharacterAnimation('WALK');
                     } else if (character.animations['RUN']) {
-                        setAnimation('RUN');
+                        setCharacterAnimation('RUN');
                     }
                 } else if (character.isLookingAround && character.animations['IDLE_LOOK']) {
-                    setAnimation('IDLE_LOOK');
+                    setCharacterAnimation('IDLE_LOOK');
                 } else {
-                    setAnimation('IDLE');
+                    setCharacterAnimation('IDLE');
                 }
                 
                 // Calculate new position with velocity
@@ -1023,8 +1340,8 @@
                         character.position.x = newPositionX.x;
                     }
                     
-                                        // Try moving only in Z direction
-                                        const newPositionZ = character.position.clone();
+                    // Try moving only in Z direction
+                    const newPositionZ = character.position.clone();
                     newPositionZ.z += character.velocity.z;
                     
                     if (!checkBoundaryCollision(newPositionZ)) {
@@ -1053,7 +1370,8 @@
                             y: character.position.y,
                             z: character.position.z
                         },
-                        grid: getGridPosition(character.position)
+                        grid: getGridPosition(character.position),
+                        health: character.health
                     });
                     
                     instructionTimer = 0;
@@ -1068,7 +1386,7 @@
                     character.velocity.z = 0;
                     
                     // Force idle animation between instructions
-                    setAnimation('IDLE');
+                    setCharacterAnimation('IDLE');
                     
                     // Get new instruction when current one is complete
                     if (currentInstructionIndex >= aiInstructions.length) {
@@ -1084,7 +1402,10 @@
                                 character.position, 
                                 character.actionHistory,
                                 hitWall,
-                                useModel1
+                                useModel1,
+                                enemy.position,
+                                character.health,
+                                isBeingAttacked
                             );
                             currentInstructionIndex = 0;
                             instructionTimer = 0;
@@ -1104,6 +1425,29 @@
             
             // Update camera position
             updateCameraPosition();
+            
+            // Game over check
+            if (character.health <= 0) {
+                document.getElementById('ai-status').innerHTML = 
+                    `<strong style="color: #ff3333;">GAME OVER</strong><br>` +
+                    `The enemy has defeated you!<br>` +
+                    `Reload the page to try again.`;
+                
+                // Stop character movement
+                character.velocity.set(0, 0, 0);
+                character.isMoving = false;
+                
+                // Set death animation if available, otherwise idle
+                if (character.animations['DEATH']) {
+                    setCharacterAnimation('DEATH');
+                } else {
+                    setCharacterAnimation('IDLE');
+                }
+                
+                // Stop AI instructions
+                aiInstructions = [];
+                sequenceCompleted = true;
+            }
             
             renderer.render(scene, camera);
         }
