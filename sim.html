@@ -152,33 +152,34 @@
         const PYTHON_SERVER_URL = 'http://localhost:5000';
 
         // AI Movement Control with local model inference
-        async function getAIMovementInstructions(currentPosition, previousActions = [], hitWall = false) {
-            try {
-                const statusElement = document.getElementById('ai-thinking');
-                statusElement.textContent = "AI is thinking about what to do next...";
-                
-                const modelChoice = document.getElementById('model-choice').value;
-                
-                // Send request to local Python server
-                const response = await fetch(PYTHON_SERVER_URL, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        model_id: modelChoice,
-                        position: {
-                            x: currentPosition.x,
-                            y: currentPosition.y,
-                            z: currentPosition.z
-                        },
-                        hit_wall: hitWall,
-                        previous_actions: previousActions.slice(-3),
-                        prompt: `You are an AI controlling a 3D character in a virtual environment with a grassy field and a wooden platform at (10, 0.5, 10). You decide what the character does next based on its current state and surroundings. The environment has walls at the boundaries (±50 on x and z axes).
+// AI Movement Control with local model inference
+async function getAIMovementInstructions(currentPosition, previousActions = [], hitWall = false) {
+    try {
+        const statusElement = document.getElementById('ai-thinking');
+        statusElement.textContent = "AI is thinking about what to do next...";
+        
+        const modelChoice = document.getElementById('model-choice').value;
+        
+        // Send request to local Python server
+        const response = await fetch(PYTHON_SERVER_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                model_id: modelChoice,
+                position: {
+                    x: currentPosition.x,
+                    y: currentPosition.y,
+                    z: currentPosition.z
+                },
+                hit_wall: hitWall,
+                previous_actions: previousActions.slice(-3),
+                prompt: `You are an AI controlling a 3D character in a virtual environment with a grassy field and a wooden platform at (10, 0.5, 10). You decide what the character does next based on its current state and surroundings. The environment has walls at the boundaries (±50 on x and z axes).
 
 The character is at position (${currentPosition.x.toFixed(1)}, ${currentPosition.y.toFixed(1)}, ${currentPosition.z.toFixed(1)}) in a grassy field with a wooden platform at (10, 0.5, 10). The environment has walls at x=±50 and z=±50.
 ${hitWall ? 'The character just hit a wall.' : ''}
-                        
+                
 Generate ONE natural, lifelike movement for the character to perform next. Return ONLY valid JSON with a single object containing:
 - "action": one of [moveForward, moveBackward, moveLeft, moveRight, jump, sprint, idle, explore, lookAround]
 - "duration": time in seconds (between 0.5 and 4)
@@ -187,58 +188,27 @@ Generate ONE natural, lifelike movement for the character to perform next. Retur
 Create an action that would make sense for a character exploring this environment, possibly interacting with the platform. Make the movement feel natural and purposeful. Avoid actions that would cause the character to hit walls or fall off edges.
 
 Previous actions: ${JSON.stringify(previousActions.slice(-3))}`
-                    })
-                });
-                
-                const data = await response.json();
-                let instructions;
-                
-                try {
-                    // Parse the response
-                    instructions = data.response;
-                    
-                    // If it's a string, try to parse it as JSON
-                    if (typeof instructions === 'string') {
-                        // Look for JSON pattern in the response
-                        const jsonMatch = instructions.match(/(\{[\s\S]*\})/);
-                        
-                        if (jsonMatch) {
-                            instructions = JSON.parse(jsonMatch[0]);
-                        } else {
-                            // If no JSON pattern found, try parsing the whole content
-                            instructions = JSON.parse(instructions);
-                        }
-                    }
-                    
-                    // If it's an array, take just the first item
-                    if (Array.isArray(instructions)) {
-                        instructions = instructions[0];
-                    }
-                    
-                    // Wrap in array for compatibility with existing code
-                    instructions = [instructions];
-                } catch (parseError) {
-                    console.error('Parse error:', parseError);
-                    console.log('Raw response:', data.response);
-                    
-                    // Fallback to a simple instruction if parsing fails
-                    instructions = [
-                        { action: 'idle', duration: 2, thought: 'Recovering from confusion' }
-                    ];
-                }
-                
-                console.log('AI Instructions:', instructions);
-                statusElement.textContent = "";
-                return instructions;
-            } catch (error) {
-                console.error('Error fetching AI instructions:', error);
-                document.getElementById('ai-thinking').textContent = "AI connection error. Using fallback behavior.";
-                
-                return [
-                    { action: 'idle', duration: 2, thought: 'Taking in the surroundings' }
-                ];
-            }
-        }
+            })
+        });
+        
+        // Get the response data
+        const data = await response.json();
+        
+        console.log('AI Response:', data);
+        statusElement.textContent = "";
+        
+        // The server now returns the instruction directly as a JSON object
+        // Wrap it in an array for compatibility with existing code
+        return [data];
+    } catch (error) {
+        console.error('Error fetching AI instructions:', error);
+        document.getElementById('ai-thinking').textContent = "AI connection error. Using fallback behavior.";
+        
+        return [
+            { action: 'idle', duration: 2, thought: 'Taking in the surroundings' }
+        ];
+    }
+}
 
         // Scene setup with enhanced environment
         const scene = new THREE.Scene();
