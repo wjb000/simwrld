@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Python server for MLX model inference - Alternating models with enemy avoidance
+# Python server for MLX model inference - Tag Game with LLM-controlled characters
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -30,9 +30,9 @@ def load_model(model_id):
         print(f"Error loading model {model_id}: {e}")
         return None, None
 
-@app.route('/', methods=['POST', 'OPTIONS'])
-def root_endpoint():
-    """Handle requests to the root endpoint for movement decisions"""
+@app.route('/tag-game', methods=['POST', 'OPTIONS'])
+def tag_game_endpoint():
+    """Handle requests for tag game movement decisions"""
     if request.method == 'OPTIONS':
         # Explicitly handle OPTIONS requests for CORS preflight
         return '', 204
@@ -47,12 +47,12 @@ def root_endpoint():
     hit_wall = data.get('hit_wall', False)
     previous_actions = data.get('previous_actions', [])
     current_grid = data.get('current_grid', {})
-    enemy_position = data.get('enemy_position', {})
-    enemy_grid = data.get('enemy_grid', {})
-    health = data.get('health', 100)
-    is_being_attacked = data.get('is_being_attacked', False)
-    distance_to_enemy = data.get('distance_to_enemy', 999)
-    direction_to_enemy = data.get('direction_to_enemy', {"x": 0, "z": 0})
+    opponent_position = data.get('opponent_position', {})
+    opponent_grid = data.get('opponent_grid', {})
+    is_chaser = data.get('is_chaser', False)
+    tag_count = data.get('tag_count', 0)
+    distance_to_opponent = data.get('distance_to_opponent', 999)
+    direction_to_opponent = data.get('direction_to_opponent', {"x": 0, "z": 0})
     
     if not model_id:
         return jsonify({"error": "Missing model_id"}), 400
@@ -67,39 +67,67 @@ def root_endpoint():
         grid_x = current_grid.get('x', 0)
         grid_z = current_grid.get('z', 0)
         
-        # Create a prompt focused on grid coordinates, enemy position, and health
-        movement_prompt = f"""You are an AI controlling a 3D character in a virtual environment with an enemy. You decide what the character does next based on its current position, the enemy's position, and your health.
+        # Create a prompt based on the character's role (chaser or runner)
+        role = "CHASER" if is_chaser else "RUNNER"
+        
+        if is_chaser:
+            movement_prompt = f"""You are an AI controlling a character in a tag game. Your role is CHASER. You need to catch the opponent by moving close to them.
 
 CURRENT POSITION: X:{position.get('x', 0):.1f}, Y:{position.get('y', 0):.1f}, Z:{position.get('z', 0):.1f}
 CURRENT GRID: {grid_x}, {grid_z}
-HEALTH: {health}%{' (BEING ATTACKED!)' if is_being_attacked else ''}
+ROLE: CHASER (you need to catch the opponent)
+TAG COUNT: {tag_count}
 
-ENEMY POSITION: X:{enemy_position.get('x', 0):.1f}, Y:{enemy_position.get('y', 0):.1f}, Z:{enemy_position.get('z', 0):.1f}
-ENEMY GRID: {enemy_grid.get('x', 0)}, {enemy_grid.get('z', 0)}
-DISTANCE TO ENEMY: {distance_to_enemy:.1f} units
+OPPONENT POSITION: X:{opponent_position.get('x', 0):.1f}, Y:{opponent_position.get('y', 0):.1f}, Z:{opponent_position.get('z', 0):.1f}
+OPPONENT GRID: {opponent_grid.get('x', 0)}, {opponent_grid.get('z', 0)}
+DISTANCE TO OPPONENT: {distance_to_opponent:.1f} units
 
 ENVIRONMENT BOUNDARIES: Walls at x=±50 and z=±50
 SPECIAL FEATURES: Wooden platform at (10, 0.5, 10)
-{' The character just hit a wall.' if hit_wall else ''}
+{' You just hit a wall.' if hit_wall else ''}
 
-PREVIOUS ACTIONS: {json.dumps(previous_actions[-5:] if previous_actions else [])}
+PREVIOUS ACTIONS: {json.dumps(previous_actions[-3:] if previous_actions else [])}
 
-IMPORTANT RULES FOR ENEMY AVOIDANCE:
-1. If the enemy is closer than 10 units, MOVE AWAY from the enemy in the OPPOSITE direction
-2. Never move directly toward the enemy
-3. Use diagonal movements to escape when the enemy is close
-4. If your health is below 50%, prioritize getting far away from the enemy
-5. Try to move toward areas the enemy hasn't visited recently
-6. If being attacked, use sprint to quickly escape
+CHASER STRATEGY TIPS:
+1. Move toward the opponent to tag them
+2. Use sprint when you're close to catch up
+3. Try to predict where they're going and intercept
+4. Use diagonal movements to move faster
+5. If the opponent is hiding, explore the area
 
-Based on the character's current grid position, the enemy's position, and your health, decide what the character should do next.
-
-Generate ONE natural, lifelike movement. Return ONLY valid JSON with a single object containing:
+Choose ONE movement action. Return ONLY valid JSON with a single object containing:
 - "action": one of [moveForward, moveBackward, moveLeft, moveRight, moveDiagonalForwardLeft, moveDiagonalForwardRight, moveDiagonalBackwardLeft, moveDiagonalBackwardRight, jump, sprint, idle, explore, lookAround]
-- "duration": time in seconds (between 0.5 and 4)
-- "thought": a brief description of the character's intention (like "Evading enemy" or "Moving to safer grid")
+- "duration": time in seconds (between 0.5 and 3)
+- "thought": a brief description of your strategy (like "Chasing opponent" or "Moving to intercept")"""
+        else:
+            movement_prompt = f"""You are an AI controlling a character in a tag game. Your role is RUNNER. You need to avoid being caught by the opponent.
 
-Make your decision strategic to avoid the enemy and maintain your health."""
+CURRENT POSITION: X:{position.get('x', 0):.1f}, Y:{position.get('y', 0):.1f}, Z:{position.get('z', 0):.1f}
+CURRENT GRID: {grid_x}, {grid_z}
+ROLE: RUNNER (you need to avoid being caught)
+TAG COUNT: {tag_count}
+
+OPPONENT POSITION: X:{opponent_position.get('x', 0):.1f}, Y:{opponent_position.get('y', 0):.1f}, Z:{opponent_position.get('z', 0):.1f}
+OPPONENT GRID: {opponent_grid.get('x', 0)}, {opponent_grid.get('z', 0)}
+DISTANCE TO OPPONENT: {distance_to_opponent:.1f} units
+
+ENVIRONMENT BOUNDARIES: Walls at x=±50 and z=±50
+SPECIAL FEATURES: Wooden platform at (10, 0.5, 10)
+{' You just hit a wall.' if hit_wall else ''}
+
+PREVIOUS ACTIONS: {json.dumps(previous_actions[-3:] if previous_actions else [])}
+
+RUNNER STRATEGY TIPS:
+1. Move away from the opponent to avoid being tagged
+2. Use sprint when the opponent is close to escape
+3. Change direction frequently to be unpredictable
+4. Use diagonal movements to move faster
+5. Use the environment to your advantage (like hiding behind obstacles)
+
+Choose ONE movement action. Return ONLY valid JSON with a single object containing:
+- "action": one of [moveForward, moveBackward, moveLeft, moveRight, moveDiagonalForwardLeft, moveDiagonalForwardRight, moveDiagonalBackwardLeft, moveDiagonalBackwardRight, jump, sprint, idle, explore, lookAround]
+- "duration": time in seconds (between 0.5 and 3)
+- "thought": a brief description of your strategy (like "Evading chaser" or "Finding hiding spot")"""
         
         # Format prompt for chat if needed
         if hasattr(tokenizer, 'chat_template') and tokenizer.chat_template is not None:
@@ -142,9 +170,8 @@ def check_model():
     return jsonify({"success": True, "model_id": model_id}), 200
 
 if __name__ == '__main__':
-    print("Starting MLX model server on http://localhost:5000")
-    # Add more verbose output to help with debugging
+    print("Starting MLX model server for Tag Game on http://localhost:5000")
     print("Available endpoints:")
-    print("  POST / - Movement decision endpoint (alternating models)")
+    print("  POST /tag-game - Tag game movement decision endpoint")
     print("  POST /check-model - Check if a model can be loaded")
     app.run(host='0.0.0.0', port=5000, debug=True)
