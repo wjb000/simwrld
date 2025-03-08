@@ -1,13 +1,21 @@
-#!/usr/bin/env python3
-# Python server for MLX model inference - Social Interaction Simulation with LLM-controlled characters
-
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import json
 import sys
 import os
-import math
-from mlx_lm import load, generate
+import re
+import logging
+from llama_cpp import Llama
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 # Configure CORS with more specific settings
@@ -19,281 +27,274 @@ models = {}
 def load_model(model_id):
     """Load a model if not already loaded"""
     if model_id in models:
+        logger.info(f"Using cached model: {model_id}")
         return models[model_id]
     
-    print(f"Loading model: {model_id}")
+    logger.info(f"Loading model: {model_id}")
     try:
-        model, tokenizer = load(model_id)
-        models[model_id] = (model, tokenizer)
-        print(f"Successfully loaded {model_id}")
-        return model, tokenizer
+        # Handle different model paths based on model_id
+        if model_id == "mistral7b.gguf":
+            model_path = os.path.join(os.path.dirname(__file__), "mistral7b.gguf")
+        else:
+            # Default to the provided path if it's a full path
+            model_path = model_id
+            
+        logger.info(f"Model path: {model_path}")
+        
+        # Load the model with llama-cpp-python
+        model = Llama(
+            model_path=model_path,
+            n_ctx=2048,  # Context window size
+            n_threads=4   # Number of CPU threads to use
+        )
+        
+        models[model_id] = model
+        logger.info(f"Successfully loaded {model_id}")
+        return model
     except Exception as e:
-        print(f"Error loading model {model_id}: {e}")
-        return None, None
+        logger.error(f"Error loading model {model_id}: {e}")
+        return None
 
-def calculate_direction_advice(position, other_position):
-    """Calculate simple direction advice to help AI understand where to go"""
-    dx = other_position.get('x', 0) - position.get('x', 0)
-    dz = other_position.get('z', 0) - position.get('z', 0)
+def extract_json_from_text(text):
+    """Extract JSON object from text, or create a fallback JSON if none is found"""
+    logger.info(f"Extracting JSON from: {text}")
     
-    # Determine primary direction
-    if abs(dx) > abs(dz):
-        # X-axis is primary direction
-        x_direction = "east" if dx > 0 else "west"
-        z_direction = "south" if dz > 0 else "north"
-        primary = f"primarily {x_direction}"
-        if abs(dz) > 5:  # Only mention secondary if significant
-            primary += f" and slightly {z_direction}"
-    else:
-        # Z-axis is primary direction
-        x_direction = "east" if dx > 0 else "west"
-        z_direction = "south" if dz > 0 else "north"
-        primary = f"primarily {z_direction}"
-        if abs(dx) > 5:  # Only mention secondary if significant
-            primary += f" and slightly {x_direction}"
+    # Try to find JSON pattern in the text
+    json_match = re.search(r'(\{[\s\S]*\})', text)
     
-    return primary
+    if json_match:
+        try:
+            # Try to parse the extracted JSON
+            json_obj = json.loads(json_match.group(1))
+            logger.info(f"Successfully extracted JSON: {json_obj}")
+            return json_obj
+        except json.JSONDecodeError as e:
+            logger.warning(f"JSON decode error: {e}")
+    
+    # If no valid JSON found, create a fallback
+    logger.warning("No valid JSON found, using fallback")
+    return {
+        "action": "explore",
+        "duration": 2.5,
+        "thought": "Starting to explore the environment"
+    }
 
-def suggest_movement_action(position, other_position):
-    """Suggest a specific movement action based on relative positions"""
-    dx = other_position.get('x', 0) - position.get('x', 0)
-    dz = other_position.get('z', 0) - position.get('z', 0)
-    
-    # Normalize to get direction
-    distance = math.sqrt(dx*dx + dz*dz)
-    if distance < 0.1:  # Avoid division by zero
-        return "idle"
-    
-    # Normalize
-    dx = dx / distance
-    dz = dz / distance
-    
-    # Determine movement direction based on the angle
-    # Forward is -z, right is +x in the coordinate system
-    
-    # Check for diagonal movements first
-    if dx > 0.5 and dz < -0.5:
-        return "move_forward_right"
-    elif dx < -0.5 and dz < -0.5:
-        return "move_forward_left"
-    elif dx > 0.5 and dz > 0.5:
-        return "move_backward_right"
-    elif dx < -0.5 and dz > 0.5:
-        return "move_backward_left"
-    # Then check for cardinal directions
-    elif abs(dx) > abs(dz):
-        return "move_right" if dx > 0 else "move_left"
-    else:
-        return "move_forward" if dz < 0 else "move_backward"
-
-@app.route('/social-interaction', methods=['POST', 'OPTIONS'])
-def social_interaction_endpoint():
-    """Handle requests for social interaction decisions"""
+# Add a route handler for the root path
+@app.route('/', methods=['POST', 'OPTIONS'])
+def root_endpoint():
+    """Handle requests to the root endpoint"""
     if request.method == 'OPTIONS':
         # Explicitly handle OPTIONS requests for CORS preflight
         return '', 204
     
     data = request.json
     if not data:
+        logger.warning("Missing request data")
         return jsonify({"error": "Missing request data"}), 400
     
-    # Extract data from the request
+    # Extract model_id and prompt from the request
     model_id = data.get('model_id')
+    prompt = data.get('prompt')
     position = data.get('position', {})
     hit_wall = data.get('hit_wall', False)
     previous_actions = data.get('previous_actions', [])
-    current_grid = data.get('current_grid', {})
-    other_position = data.get('other_position', {})
-    other_grid = data.get('other_grid', {})
-    distance_to_other = data.get('distance_to_other', 999)
-    direction_to_other = data.get('direction_to_other', {"x": 0, "z": 0})
-    character_name = data.get('character_name', 'Character')
-    other_name = data.get('other_name', 'Other')
-    recent_messages = data.get('recent_messages', [])
     
-    if not model_id:
-        return jsonify({"error": "Missing model_id"}), 400
+    logger.info(f"Request received - Model: {model_id}")
+    logger.info(f"Character position: X:{position.get('x', 0):.1f}, Y:{position.get('y', 0):.1f}, Z:{position.get('z', 0):.1f}")
+    logger.info(f"Hit wall: {hit_wall}")
+    logger.info(f"Previous actions: {previous_actions[-3:] if previous_actions else []}")
+    
+    if not model_id or not prompt:
+        logger.warning("Missing model_id or prompt")
+        return jsonify({"error": "Missing model_id or prompt"}), 400
     
     # Load the model
-    model, tokenizer = load_model(model_id)
-    if model is None or tokenizer is None:
+    model = load_model(model_id)
+    if model is None:
+        logger.error(f"Failed to load model {model_id}")
         return jsonify({"error": f"Failed to load model {model_id}"}), 500
     
     try:
-        # Get grid coordinates safely
-        grid_x = current_grid.get('x', 0)
-        grid_z = current_grid.get('z', 0)
+        # Create a simplified prompt that focuses on coordinates and wall collisions
+        # Use a more direct prompt that's easier for the model to respond to
+        simplified_prompt = f"""You are controlling a 3D character in a virtual environment. Generate the next action for the character.
+
+Current position: X:{position.get('x', 0):.1f}, Y:{position.get('y', 0):.1f}, Z:{position.get('z', 0):.1f}
+Environment: Open field with walls at x=±50 and z=±50
+{' The character just hit a wall.' if hit_wall else ''}
+
+Choose ONE action from: moveForward, moveBackward, moveLeft, moveRight, jump, sprint, idle, explore, lookAround
+Choose a duration between 0.5 and 4 seconds
+Include a brief thought describing the character's intention
+
+Format your response EXACTLY like this JSON:
+{{"action": "moveForward", "duration": 2.5, "thought": "Exploring the open field"}}
+
+Previous actions: {json.dumps(previous_actions[-3:] if previous_actions else [])}"""
+
+        logger.info("Sending prompt to model:")
+        logger.info("-" * 40)
+        logger.info(simplified_prompt)
+        logger.info("-" * 40)
         
-        # Calculate helpful direction advice
-        direction_advice = calculate_direction_advice(position, other_position)
-        suggested_action = suggest_movement_action(position, other_position)
-        
-        # Format recent messages for the prompt
-        conversation_history = ""
-        if recent_messages:
-            conversation_history = "RECENT CONVERSATION:\n"
-            for msg in recent_messages[-5:]:  # Use last 5 messages
-                speaker = msg.get('speaker', 'Unknown')
-                message = msg.get('message', '')
-                conversation_history += f"{speaker}: {message}\n"
-        
-        # Create a prompt for social interaction with emphasis on seeking each other out
-        interaction_prompt = f"""You are an AI controlling a character named {character_name} in a social simulation. Your PRIMARY GOAL is to find {other_name} and have friendly conversations. You should actively seek out {other_name} and engage with them.
-
-CURRENT POSITION: X:{position.get('x', 0):.1f}, Y:{position.get('y', 0):.1f}, Z:{position.get('z', 0):.1f}
-CURRENT GRID: {grid_x}, {grid_z}
-CHARACTER: {character_name}
-
-{other_name}'S POSITION: X:{other_position.get('x', 0):.1f}, Y:{other_position.get('y', 0):.1f}, Z:{other_position.get('z', 0):.1f}
-{other_name}'S GRID: {other_grid.get('x', 0)}, {other_grid.get('z', 0)}
-DISTANCE TO {other_name}: {distance_to_other:.1f} units
-
-DIRECTION TO {other_name}: {direction_advice}
-SUGGESTED MOVEMENT: {suggested_action}
-
-ENVIRONMENT BOUNDARIES: Walls at x=±24 and z=±24
-SPECIAL FEATURES: Wooden platform at center (0, 0.25, 0), benches at (0, 0, 10) and (-10, 0, 0)
-{' You just hit a wall.' if hit_wall else ''}
-
-PREVIOUS ACTIONS: {json.dumps(previous_actions[-3:] if previous_actions else [])}
-
-{conversation_history}
-
-IMPORTANT DIRECTIVES:
-1. ALWAYS move toward {other_name} when you're not already close to them
-2. Your main purpose is to find {other_name} and be friends with them
-3. When you're close to {other_name} (distance < 3 units), engage in conversation
-4. You can suggest sitting on benches together for a nice chat
-5. Be friendly, enthusiastic, and show interest in {other_name}
-6. Your conversations should be natural and engaging
-
-MOVEMENT GUIDE:
-- In this world, "move_forward" means moving in -Z direction
-- "move_backward" means moving in +Z direction
-- "move_right" means moving in +X direction
-- "move_left" means moving in -X direction
-- You can also use diagonal movements to move faster toward {other_name}
-- If {other_name} is to your east, use "move_right" or a diagonal with "right"
-- If {other_name} is to your west, use "move_left" or a diagonal with "left"
-- If {other_name} is to your north, use "move_forward" or a diagonal with "forward"
-- If {other_name} is to your south, use "move_backward" or a diagonal with "backward"
-
-Choose ONE action. Return ONLY valid JSON with a single object containing:
-- "action": one of [move_forward, move_backward, move_left, move_right, move_forward_left, move_forward_right, move_backward_left, move_backward_right, run_forward, jump, idle, wave, look_around]
-- "duration": time in seconds (between 0.5 and 3)
-- "thought": a brief description of your intention (like "Going to find {other_name}" or "Chatting with {other_name}")
-- "message": (optional) a short message to say to {other_name} if you're close enough (within 3 units)
-
-REMEMBER: Your primary goal is to find and interact with {other_name}. If you're not already close to them, you should be moving toward them. The suggested movement action is: {suggested_action}"""
-        
-        # Format prompt for chat if needed
-        if hasattr(tokenizer, 'chat_template') and tokenizer.chat_template is not None:
-            messages = [{"role": "user", "content": interaction_prompt}]
-            formatted_prompt = tokenizer.apply_chat_template(
-                messages, add_generation_prompt=True
-            )
-        else:
-            formatted_prompt = interaction_prompt
-        
-        # Generate response
-        response = generate(
-            model,
-            tokenizer,
-            prompt=formatted_prompt,
+        # Generate response using llama-cpp with higher temperature for more creativity
+        response = model.create_completion(
+            prompt=simplified_prompt,
             max_tokens=256,
-            verbose=False
+            temperature=0.8,
+            top_p=0.95,
+            stop=["</s>", "\n\n"],
+            echo=False
         )
         
-        return jsonify({"response": response})
+        # Extract the generated text
+        generated_text = response["choices"][0]["text"].strip()
+        logger.info("Raw model response:")
+        logger.info("-" * 40)
+        logger.info(generated_text)
+        logger.info("-" * 40)
+        
+        # If the model didn't generate anything, use a predefined action
+        if not generated_text:
+            logger.warning("Model returned empty response, using predefined action")
+            # Cycle through different actions to make the character move
+            if not previous_actions:
+                action = "lookAround"
+                thought = "Taking in the surroundings"
+            elif len(previous_actions) == 1:
+                action = "moveForward"
+                thought = "Starting to explore the environment"
+            elif len(previous_actions) == 2:
+                action = "moveRight"
+                thought = "Checking what's to the right"
+            elif len(previous_actions) == 3:
+                action = "sprint"
+                thought = "Moving quickly to cover more ground"
+            else:
+                action = "explore"
+                thought = "Continuing to explore the area"
+                
+            json_response = {
+                "action": action,
+                "duration": 2.0,
+                "thought": thought
+            }
+        else:
+            # Extract JSON from the response or create fallback
+            json_response = extract_json_from_text(generated_text)
+        
+        # Ensure the response has all required fields
+        if "action" not in json_response:
+            logger.warning("Missing 'action' field, using fallback")
+            json_response["action"] = "explore"
+        if "duration" not in json_response:
+            logger.warning("Missing 'duration' field, using fallback")
+            json_response["duration"] = 2.0
+        if "thought" not in json_response:
+            logger.warning("Missing 'thought' field, using fallback")
+            json_response["thought"] = "Exploring the environment"
+            
+        # Validate action is in allowed list
+        allowed_actions = ["moveForward", "moveBackward", "moveLeft", "moveRight", 
+                          "jump", "sprint", "idle", "explore", "lookAround"]
+        if json_response["action"] not in allowed_actions:
+            logger.warning(f"Invalid action '{json_response['action']}', using fallback")
+            json_response["action"] = "explore"
+            
+        # Validate duration is within reasonable range
+        if not isinstance(json_response["duration"], (int, float)) or json_response["duration"] < 0.5 or json_response["duration"] > 4:
+            logger.warning(f"Invalid duration '{json_response['duration']}', using fallback")
+            json_response["duration"] = 2.0
+        
+        # Convert to JSON string
+        json_string = json.dumps(json_response)
+        logger.info(f"Final response: {json_string}")
+            
+        # Return the JSON string directly
+        return jsonify({"response": json_string})
     
     except Exception as e:
-        print(f"Error generating response: {e}")
-        return jsonify({"error": str(e)}), 500
+        logger.error(f"Error generating response: {e}", exc_info=True)
+        # Return a fallback response on error
+        fallback = {"action": "explore", "duration": 2.0, "thought": "Exploring the environment"}
+        return jsonify({"response": json.dumps(fallback)}), 200
 
-@app.route('/generate-chat', methods=['POST'])
-def generate_chat_endpoint():
-    """Generate chat messages between characters"""
+@app.route('/generate', methods=['POST'])
+def generate_text():
+    """Generate text from a model"""
     data = request.json
-    if not data:
-        return jsonify({"error": "Missing request data"}), 400
-    
-    # Extract data from the request
     model_id = data.get('model_id')
-    character_name = data.get('character_name', 'Character')
-    other_name = data.get('other_name', 'Other')
-    conversation_history = data.get('conversation_history', [])
+    prompt = data.get('prompt')
     
-    if not model_id:
-        return jsonify({"error": "Missing model_id"}), 400
+    logger.info(f"Generate text request - Model: {model_id}")
+    
+    if not model_id or not prompt:
+        logger.warning("Missing model_id or prompt")
+        return jsonify({"error": "Missing model_id or prompt"}), 400
     
     # Load the model
-    model, tokenizer = load_model(model_id)
-    if model is None or tokenizer is None:
+    model = load_model(model_id)
+    if model is None:
+        logger.error(f"Failed to load model {model_id}")
         return jsonify({"error": f"Failed to load model {model_id}"}), 500
     
     try:
-        # Format conversation history for the prompt
-        formatted_history = ""
-        if conversation_history:
-            for msg in conversation_history[-10:]:  # Use last 10 messages
-                speaker = msg.get('speaker', 'Unknown')
-                message = msg.get('message', '')
-                formatted_history += f"{speaker}: {message}\n"
+        logger.info("Prompt:")
+        logger.info("-" * 40)
+        logger.info(prompt)
+        logger.info("-" * 40)
         
-        # Create a prompt for chat generation with emphasis on friendly interaction
-        chat_prompt = f"""You are {character_name} having a conversation with {other_name} in a social simulation. You are excited to talk with {other_name} and want to be friends. Generate a natural, friendly response as {character_name}.
-
-CONVERSATION HISTORY:
-{formatted_history}
-
-Now, as {character_name}, respond to {other_name} with a friendly message. Keep your response brief (1-2 sentences) and conversational. Be warm, engaging, and show genuine interest in {other_name}. You're happy to have found each other and want to continue the conversation.
-
-{character_name}:"""
-        
-        # Format prompt for chat if needed
-        if hasattr(tokenizer, 'chat_template') and tokenizer.chat_template is not None:
-            messages = [{"role": "user", "content": chat_prompt}]
-            formatted_prompt = tokenizer.apply_chat_template(
-                messages, add_generation_prompt=True
-            )
-        else:
-            formatted_prompt = chat_prompt
-        
-        # Generate response
-        response = generate(
-            model,
-            tokenizer,
-            prompt=formatted_prompt,
-            max_tokens=100,
-            verbose=False
+        # Generate response using llama-cpp
+        response = model.create_completion(
+            prompt=prompt,
+            max_tokens=256,
+            temperature=0.7,
+            stop=["</s>", "\n\n"],
+            echo=False
         )
         
-        return jsonify({"response": response})
+        # Extract the generated text
+        generated_text = response["choices"][0]["text"]
+        
+        logger.info("Response:")
+        logger.info("-" * 40)
+        logger.info(generated_text)
+        logger.info("-" * 40)
+        
+        return jsonify({"response": generated_text})
     
     except Exception as e:
-        print(f"Error generating chat: {e}")
+        logger.error(f"Error generating response: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
+# Fix: Change the route to match what the client is expecting
 @app.route('/check-model', methods=['POST'])
 def check_model():
     """Check if a model can be loaded"""
     data = request.json
     model_id = data.get('model_id')
     
+    logger.info(f"Check model request: {model_id}")
+    
     if not model_id:
+        logger.warning("Missing model_id")
         return jsonify({"error": "Missing model_id"}), 400
     
     # Try to load the model
-    model, tokenizer = load_model(model_id)
-    if model is None or tokenizer is None:
-        return jsonify({"available": False, "error": f"Failed to load model {model_id}"}), 200
+    model = load_model(model_id)
+    if model is None:
+        logger.warning(f"Failed to load model {model_id}")
+        return jsonify({"success": False, "error": f"Failed to load model {model_id}"}), 200
     
-    return jsonify({"available": True, "model_id": model_id}), 200
+    logger.info(f"Model {model_id} loaded successfully")
+    return jsonify({"success": True, "model_id": model_id}), 200
 
 if __name__ == '__main__':
-    print("Starting MLX model server for Social Interaction Simulation on http://localhost:5000")
-    print("Available endpoints:")
-    print("  POST /social-interaction - Social interaction decision endpoint")
-    print("  POST /generate-chat - Chat generation endpoint")
-    print("  POST /check-model - Check if a model can be loaded")
+    logger.info("=" * 50)
+    logger.info("Starting LLaMA model server on http://localhost:5000")
+    logger.info("Available endpoints:")
+    logger.info("  POST /generate - Generate text from a model")
+    logger.info("  POST /check-model - Check if a model can be loaded")
+    logger.info("  POST / - Root endpoint for basic requests")
+    logger.info("=" * 50)
     app.run(host='0.0.0.0', port=5000, debug=True)
