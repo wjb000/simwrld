@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Tag Game - LLM-Controlled Characters</title>
+    <title>AI Social Simulation - LLM-Controlled Characters</title>
     <style>
         body { 
             margin: 0; 
@@ -128,20 +128,7 @@
             font-weight: bold;
             color: #4CAF50;
         }
-        #game-status {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: rgba(0,0,0,0.8);
-            color: white;
-            padding: 20px;
-            border-radius: 10px;
-            text-align: center;
-            font-size: 24px;
-            display: none;
-        }
-        #enemy-info-panel {
+        #red-info-panel {
             position: absolute; 
             bottom: 10px; 
             left: 10px; 
@@ -152,7 +139,76 @@
             max-width: 300px; 
             box-shadow: 0 4px 8px rgba(0,0,0,0.3);
         }
-        #role-indicator {
+        .chat-bubble {
+            position: absolute;
+            background: white;
+            border-radius: 20px;
+            padding: 10px 15px;
+            max-width: 200px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            font-size: 14px;
+            line-height: 1.4;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+            z-index: 100;
+            transform: translate(-50%, -100%);
+            margin-top: -50px;
+        }
+        .chat-bubble.blue {
+            background: #e1f5fe;
+            border: 2px solid #0066ff;
+        }
+        .chat-bubble.red {
+            background: #ffebee;
+            border: 2px solid #ff3333;
+        }
+        .chat-bubble:after {
+            content: '';
+            position: absolute;
+            bottom: -10px;
+            left: 50%;
+            margin-left: -10px;
+            border-width: 10px 10px 0;
+            border-style: solid;
+            border-color: white transparent transparent transparent;
+        }
+        .chat-bubble.blue:after {
+            border-color: #e1f5fe transparent transparent transparent;
+        }
+        .chat-bubble.red:after {
+            border-color: #ffebee transparent transparent transparent;
+        }
+        #conversation-log {
+            position: absolute;
+            bottom: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            max-width: 400px;
+            max-height: 200px;
+            overflow-y: auto;
+            font-size: 14px;
+            line-height: 1.4;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        }
+        .conversation-entry {
+            margin-bottom: 8px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .conversation-entry .blue {
+            color: #4fc3f7;
+            font-weight: bold;
+        }
+        .conversation-entry .red {
+            color: #ef9a9a;
+            font-weight: bold;
+        }
+        .interaction-indicator {
             position: absolute;
             top: 50%;
             left: 50%;
@@ -162,36 +218,17 @@
             padding: 20px 40px;
             border-radius: 10px;
             text-align: center;
-            font-size: 32px;
+            font-size: 24px;
             font-weight: bold;
             opacity: 0;
             transition: opacity 0.5s;
             pointer-events: none;
         }
-        .chaser {
-            color: #ff3333;
-        }
-        .runner {
-            color: #33ff33;
-        }
-        .tag-counter {
-            position: absolute;
-            top: 10px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: rgba(0,0,0,0.7);
-            color: white;
-            padding: 10px 20px;
-            border-radius: 8px;
-            text-align: center;
-            font-size: 18px;
-            font-weight: bold;
-        }
     </style>
 </head>
 <body>
     <div id="info-panel">
-        <h2>Blue Character (Player 1)</h2>
+        <h2>Blue Character</h2>
         <div id="ai-status">Initializing AI system...</div>
         <div class="progress-bar"><div id="action-progress" class="progress-fill"></div></div>
         <div id="ai-thinking"></div>
@@ -199,9 +236,9 @@
     </div>
 
     <div id="grid-info">
-        <h2>Game Information</h2>
+        <h2>Simulation Information</h2>
         <div id="grid-content">Waiting for movement...</div>
-        <div id="active-model">Current Model: None</div>
+        <div id="active-model">Current Models: None</div>
     </div>
 
     <div id="model-selector">
@@ -222,32 +259,29 @@
                 <option value="mlx-community/Mistral-7B-Instruct-v0.2-8-bit-mlx">Mistral-7B-Instruct</option>
             </select>
         </div>
-        <div style="margin-top: 10px;">
-            <label>Initial Chaser:</label>
-            <select id="initial-chaser">
-                <option value="blue">Blue Character</option>
-                <option value="red">Red Character</option>
-            </select>
-        </div>
-        <button id="load-models-btn">Start Game</button>
+        <button id="load-models-btn">Start Simulation</button>
         <div id="model-status">No models loaded</div>
     </div>
     
-    <div id="enemy-info-panel">
-        <h2>Red Character (Player 2)</h2>
-        <div id="enemy-ai-status">Waiting for model...</div>
-        <div class="progress-bar"><div id="enemy-action-progress" class="progress-fill"></div></div>
-        <div id="enemy-ai-thinking"></div>
+    <div id="red-info-panel">
+        <h2>Red Character</h2>
+        <div id="red-ai-status">Waiting for model...</div>
+        <div class="progress-bar"><div id="red-action-progress" class="progress-fill"></div></div>
+        <div id="red-ai-thinking"></div>
     </div>
 
     <div id="environment-info">
         Environment: Grassy Field with Platform<br>
-        Game: Tag<br>
-        Rules: Roles reverse when characters touch
+        Simulation: Social Interaction<br>
+        Goal: Characters explore and chat with each other
     </div>
 
-    <div id="role-indicator"></div>
-    <div id="tag-counter" class="tag-counter">Tags: 0</div>
+    <div id="conversation-log"></div>
+    <div id="interaction-indicator" class="interaction-indicator"></div>
+
+    <!-- Chat bubbles for characters -->
+    <div id="blue-chat-bubble" class="chat-bubble blue"></div>
+    <div id="red-chat-bubble" class="chat-bubble red"></div>
 
     <script type="importmap">
         {
@@ -269,14 +303,16 @@
         // Grid size for position tracking (10x10 grid)
         const GRID_SIZE = 10;
 
-        // Game state
-        const gameState = {
+        // Simulation state
+        const simulationState = {
             isActive: false,
-            blueIsChaser: true, // Blue starts as chaser by default
-            tagCount: 0,
-            lastTagTime: 0,
-            tagCooldown: 2, // 2 seconds cooldown between tags
-            showingRoleChange: false
+            conversationHistory: [],
+            lastInteractionTime: 0,
+            interactionCooldown: 5, // 5 seconds cooldown between interactions
+            showingInteraction: false,
+            chatting: false,
+            chattingDuration: 0,
+            chattingTimer: 0
         };
 
         // Get current grid position from world coordinates
@@ -311,7 +347,7 @@
                 
                 // Update active model display
                 document.getElementById('active-model').textContent = 
-                    `Blue Model: ${modelChoice.split('/').pop()}`;
+                    `Blue: ${modelChoice.split('/').pop()}, Red: ${document.getElementById('model-2-choice').value.split('/').pop()}`;
                 
                 // Calculate current grid position
                 const currentGrid = getGridPosition(currentPosition);
@@ -324,10 +360,10 @@
                     `Blue Grid: (${currentGrid.x}, ${currentGrid.z})<br>` +
                     `Red Grid: (${redGrid.x}, ${redGrid.z})<br>` +
                     `Distance: ${distanceToRed.toFixed(1)} units<br>` +
-                    `Blue is ${gameState.blueIsChaser ? 'CHASER' : 'RUNNER'}`;
+                    `Conversation: ${simulationState.conversationHistory.length} messages`;
                 
                 // Send request to local Python server
-                const response = await fetch(`${PYTHON_SERVER_URL}/tag-game`, {
+                const response = await fetch(`${PYTHON_SERVER_URL}/social-interaction`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -342,12 +378,13 @@
                         current_grid: currentGrid,
                         hit_wall: hitWall,
                         previous_actions: previousActions.slice(-5),
-                        opponent_position: redPosition || { x: 0, y: 0, z: 0 },
-                        opponent_grid: redGrid,
-                        distance_to_opponent: distanceToRed,
-                        direction_to_opponent: directionToRed,
-                        is_chaser: gameState.blueIsChaser,
-                        tag_count: gameState.tagCount
+                        other_position: redPosition || { x: 0, y: 0, z: 0 },
+                        other_grid: redGrid,
+                        distance_to_other: distanceToRed,
+                        direction_to_other: directionToRed,
+                        character_name: "Blue",
+                        other_name: "Red",
+                        recent_messages: simulationState.conversationHistory.slice(-5)
                     })
                 });
                 
@@ -384,7 +421,7 @@
                     
                     // Fallback to a simple instruction if parsing fails
                     instructions = [
-                        { action: 'idle', duration: 2, thought: 'Recovering from confusion' }
+                        { action: 'idle', duration: 2, thought: 'Thinking about what to do', message: '' }
                     ];
                 }
                 
@@ -396,7 +433,7 @@
                 document.getElementById('ai-thinking').textContent = "AI connection error. Using fallback behavior.";
                 
                 return [
-                    { action: 'idle', duration: 2, thought: 'Taking in the surroundings' }
+                    { action: 'idle', duration: 2, thought: 'Taking in the surroundings', message: '' }
                 ];
             }
         }
@@ -404,7 +441,7 @@
         // AI Movement Control for red character
         async function getRedAIInstructions(currentPosition, previousActions = [], hitWall = false, bluePosition = null) {
             try {
-                const statusElement = document.getElementById('enemy-ai-thinking');
+                const statusElement = document.getElementById('red-ai-thinking');
                 statusElement.textContent = "Red AI is thinking...";
                 
                 // Get the selected model
@@ -430,7 +467,7 @@
                 const blueGrid = bluePosition ? getGridPosition(bluePosition) : { x: -999, z: -999 };
                 
                 // Send request to local Python server
-                const response = await fetch(`${PYTHON_SERVER_URL}/tag-game`, {
+                const response = await fetch(`${PYTHON_SERVER_URL}/social-interaction`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -445,12 +482,13 @@
                         current_grid: currentGrid,
                         hit_wall: hitWall,
                         previous_actions: previousActions.slice(-5),
-                        opponent_position: bluePosition || { x: 0, y: 0, z: 0 },
-                        opponent_grid: blueGrid,
-                        distance_to_opponent: distanceToBlue,
-                        direction_to_opponent: directionToBlue,
-                        is_chaser: !gameState.blueIsChaser, // Red is chaser when blue is not
-                        tag_count: gameState.tagCount
+                        other_position: bluePosition || { x: 0, y: 0, z: 0 },
+                        other_grid: blueGrid,
+                        distance_to_other: distanceToBlue,
+                        direction_to_other: directionToBlue,
+                        character_name: "Red",
+                        other_name: "Blue",
+                        recent_messages: simulationState.conversationHistory.slice(-5)
                     })
                 });
                 
@@ -487,7 +525,7 @@
                     
                     // Fallback to a simple instruction if parsing fails
                     instructions = [
-                        { action: 'idle', duration: 2, thought: 'Recovering from confusion' }
+                        { action: 'idle', duration: 2, thought: 'Thinking about what to do', message: '' }
                     ];
                 }
                 
@@ -496,12 +534,107 @@
                 return instructions;
             } catch (error) {
                 console.error('Error fetching red AI instructions:', error);
-                document.getElementById('enemy-ai-thinking').textContent = "AI connection error. Using fallback behavior.";
+                document.getElementById('red-ai-thinking').textContent = "AI connection error. Using fallback behavior.";
                 
                 return [
-                    { action: 'idle', duration: 2, thought: 'Taking in the surroundings' }
+                    { action: 'idle', duration: 2, thought: 'Taking in the surroundings', message: '' }
                 ];
             }
+        }
+
+        // Generate chat message
+        async function generateChatMessage(character, otherCharacter) {
+            try {
+                const modelChoice = character === 'blue' ? 
+                    document.getElementById('model-1-choice').value : 
+                    document.getElementById('model-2-choice').value;
+                
+                const characterName = character === 'blue' ? 'Blue' : 'Red';
+                const otherName = character === 'blue' ? 'Red' : 'Blue';
+                
+                const response = await fetch(`${PYTHON_SERVER_URL}/generate-chat`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        model_id: modelChoice,
+                        character_name: characterName,
+                        other_name: otherName,
+                        conversation_history: simulationState.conversationHistory
+                    })
+                });
+                
+                const data = await response.json();
+                let message = '';
+                
+                try {
+                    // Parse the response
+                    message = data.response;
+                    
+                    // Clean up the message if needed
+                    if (message.includes(characterName + ':')) {
+                        message = message.split(characterName + ':')[1].trim();
+                    }
+                    
+                    // Limit message length
+                    if (message.length > 150) {
+                        message = message.substring(0, 147) + '...';
+                    }
+                    
+                } catch (parseError) {
+                    console.error(`Parse error for ${character} chat:`, parseError);
+                    message = `Hi ${otherName}!`;
+                }
+                
+                // Add message to conversation history
+                simulationState.conversationHistory.push({
+                    speaker: characterName,
+                    message: message
+                });
+                
+                // Update conversation log
+                updateConversationLog();
+                
+                // Show chat bubble
+                showChatBubble(character, message);
+                
+                return message;
+            } catch (error) {
+                console.error(`Error generating ${character} chat:`, error);
+                return `Hi ${otherName}!`;
+            }
+        }
+
+        // Show chat bubble
+        function showChatBubble(character, message) {
+            const bubbleElement = document.getElementById(`${character}-chat-bubble`);
+            bubbleElement.textContent = message;
+            bubbleElement.style.opacity = 1;
+            
+            // Hide bubble after a few seconds
+            setTimeout(() => {
+                bubbleElement.style.opacity = 0;
+            }, 5000);
+        }
+
+        // Update conversation log
+        function updateConversationLog() {
+            const logElement = document.getElementById('conversation-log');
+            logElement.innerHTML = '';
+            
+            // Show last 10 messages
+            const recentMessages = simulationState.conversationHistory.slice(-10);
+            
+            recentMessages.forEach(entry => {
+                const messageElement = document.createElement('div');
+                messageElement.className = 'conversation-entry';
+                messageElement.innerHTML = `<span class="${entry.speaker.toLowerCase()}">${entry.speaker}:</span> ${entry.message}`;
+                logElement.appendChild(messageElement);
+            });
+            
+            // Scroll to bottom
+            logElement.scrollTop = logElement.scrollHeight;
         }
 
         // Scene setup with enhanced environment
@@ -509,9 +642,9 @@
         scene.background = new THREE.Color(0x87ceeb);
         scene.fog = new THREE.FogExp2(0x87ceeb, 0.01);
 
-        // Create grassy terrain
-        const groundSize = 100;
-        const groundSegments = 100;
+        // Create grassy terrain - SMALLER MAP SIZE
+        const groundSize = 50; // Reduced from 100 to 50
+        const groundSegments = 50;
         const groundGeometry = new THREE.PlaneGeometry(groundSize, groundSize, groundSegments, groundSegments);
         
         const vertices = groundGeometry.attributes.position.array;
@@ -542,13 +675,13 @@
             metalness: 0.2
         });
         const platform = new THREE.Mesh(platformGeometry, platformMaterial);
-        platform.position.set(10, 0.25, 10); // Slightly above ground at x=10, z=10
+        platform.position.set(0, 0.25, 0); // Moved to center for easier meeting
         platform.castShadow = true;
         platform.receiveShadow = true;
         scene.add(platform);
 
         // Add main floor
-        const floorGeometry = new THREE.BoxGeometry(100, 0.5, 100);
+        const floorGeometry = new THREE.BoxGeometry(50, 0.5, 50); // Reduced from 100 to 50
         const floorMaterial = new THREE.MeshStandardMaterial({
             color: 0x555555, // Dark gray
             roughness: 0.9,
@@ -568,61 +701,61 @@
             metalness: 0.2
         });
 
-        // Define boundary limits for collision detection
+        // Define boundary limits for collision detection - SMALLER MAP
         const boundaries = {
-            minX: -49,
-            maxX: 49,
-            minZ: -49,
-            maxZ: 49
+            minX: -24,
+            maxX: 24,
+            minZ: -24,
+            maxZ: 24
         };
 
         // North wall
-        const northWallGeometry = new THREE.BoxGeometry(100 + wallThickness*2, wallHeight, wallThickness);
+        const northWallGeometry = new THREE.BoxGeometry(50 + wallThickness*2, wallHeight, wallThickness);
         const northWall = new THREE.Mesh(northWallGeometry, wallMaterial);
-        northWall.position.set(0, wallHeight/2, -50 - wallThickness/2);
+        northWall.position.set(0, wallHeight/2, -25 - wallThickness/2);
         northWall.castShadow = true;
         northWall.receiveShadow = true;
         scene.add(northWall);
 
         // South wall
-        const southWallGeometry = new THREE.BoxGeometry(100 + wallThickness*2, wallHeight, wallThickness);
+        const southWallGeometry = new THREE.BoxGeometry(50 + wallThickness*2, wallHeight, wallThickness);
         const southWall = new THREE.Mesh(southWallGeometry, wallMaterial);
-        southWall.position.set(0, wallHeight/2, 50 + wallThickness/2);
+        southWall.position.set(0, wallHeight/2, 25 + wallThickness/2);
         southWall.castShadow = true;
         southWall.receiveShadow = true;
         scene.add(southWall);
 
         // East wall
-        const eastWallGeometry = new THREE.BoxGeometry(wallThickness, wallHeight, 100);
+        const eastWallGeometry = new THREE.BoxGeometry(wallThickness, wallHeight, 50);
         const eastWall = new THREE.Mesh(eastWallGeometry, wallMaterial);
-        eastWall.position.set(50 + wallThickness/2, wallHeight/2, 0);
+        eastWall.position.set(25 + wallThickness/2, wallHeight/2, 0);
         eastWall.castShadow = true;
         eastWall.receiveShadow = true;
         scene.add(eastWall);
 
         // West wall
-        const westWallGeometry = new THREE.BoxGeometry(wallThickness, wallHeight, 100);
+        const westWallGeometry = new THREE.BoxGeometry(wallThickness, wallHeight, 50);
         const westWall = new THREE.Mesh(westWallGeometry, wallMaterial);
-        westWall.position.set(-50 - wallThickness/2, wallHeight/2, 0);
+        westWall.position.set(-25 - wallThickness/2, wallHeight/2, 0);
         westWall.castShadow = true;
         westWall.receiveShadow = true;
         scene.add(westWall);
 
         // Add grid markers to visualize the grid
         function addGridMarkers() {
-            const gridLineGeometry = new THREE.BoxGeometry(0.1, 0.1, 100);
+            const gridLineGeometry = new THREE.BoxGeometry(0.1, 0.1, 50);
             const gridLineMaterial = new THREE.MeshBasicMaterial({ color: 0x444444, transparent: true, opacity: 0.3 });
             
             // Add grid lines along X axis
-            for (let i = -5; i <= 5; i++) {
+            for (let i = -2; i <= 2; i++) {
                 const xLine = new THREE.Mesh(gridLineGeometry, gridLineMaterial);
                 xLine.position.set(i * GRID_SIZE, 0.05, 0);
                 scene.add(xLine);
             }
             
             // Add grid lines along Z axis
-            const gridLineGeometryX = new THREE.BoxGeometry(100, 0.1, 0.1);
-            for (let i = -5; i <= 5; i++) {
+            const gridLineGeometryX = new THREE.BoxGeometry(50, 0.1, 0.1);
+            for (let i = -2; i <= 2; i++) {
                 const zLine = new THREE.Mesh(gridLineGeometryX, gridLineMaterial);
                 zLine.position.set(0, 0.05, i * GRID_SIZE);
                 scene.add(zLine);
@@ -632,8 +765,8 @@
             const markerGeometry = new THREE.BoxGeometry(0.5, 0.1, 0.5);
             const markerMaterial = new THREE.MeshBasicMaterial({ color: 0x666666 });
             
-            for (let x = -5; x <= 5; x++) {
-                for (let z = -5; z <= 5; z++) {
+            for (let x = -2; x <= 2; x++) {
+                for (let z = -2; z <= 2; z++) {
                     const marker = new THREE.Mesh(markerGeometry, markerMaterial);
                     marker.position.set(x * GRID_SIZE, 0.1, z * GRID_SIZE);
                     scene.add(marker);
@@ -643,14 +776,15 @@
         
         addGridMarkers();
 
-        // Add environment objects (trees and rocks)
-        function addEnvironmentObjects() {
+                // Add environment objects (trees and rocks) - FEWER OBJECTS FOR SMALLER MAP
+                function addEnvironmentObjects() {
             const treeGeometry = new THREE.ConeGeometry(1, 4, 8);
             const treeMaterial = new THREE.MeshStandardMaterial({ color: 0x2d572c });
             const trunkGeometry = new THREE.CylinderGeometry(0.2, 0.2, 1, 8);
             const trunkMaterial = new THREE.MeshStandardMaterial({ color: 0x8b4513 });
             
-            for (let i = 0; i < 20; i++) {
+            // Fewer trees for smaller map
+            for (let i = 0; i < 10; i++) {
                 const tree = new THREE.Group();
                 
                 const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
@@ -664,7 +798,7 @@
                 tree.add(leaves);
                 
                 const angle = Math.random() * Math.PI * 2;
-                const distance = 15 + Math.random() * 30;
+                const distance = 10 + Math.random() * 10; // Reduced distance for smaller map
                 tree.position.set(
                     Math.cos(angle) * distance,
                     0,
@@ -681,7 +815,8 @@
                 metalness: 0.1
             });
             
-            for (let i = 0; i < 15; i++) {
+            // Fewer rocks for smaller map
+            for (let i = 0; i < 8; i++) {
                 const rock = new THREE.Mesh(rockGeometry, rockMaterial);
                 
                 const scale = 0.5 + Math.random() * 1.5;
@@ -689,7 +824,7 @@
                 rock.rotation.y = Math.random() * Math.PI * 2;
                 
                 const angle = Math.random() * Math.PI * 2;
-                const distance = 10 + Math.random() * 35;
+                const distance = 8 + Math.random() * 12; // Reduced distance for smaller map
                 rock.position.set(
                     Math.cos(angle) * distance,
                     0,
@@ -704,21 +839,69 @@
         
         addEnvironmentObjects();
 
+        // Add a bench for characters to sit on - Centered for easier meeting
+        function addBench() {
+            const benchGroup = new THREE.Group();
+            
+            // Bench seat
+            const seatGeometry = new THREE.BoxGeometry(3, 0.2, 1);
+            const woodMaterial = new THREE.MeshStandardMaterial({
+                color: 0x8b4513,
+                roughness: 0.8,
+                metalness: 0.1
+            });
+            const seat = new THREE.Mesh(seatGeometry, woodMaterial);
+            seat.position.y = 0.6;
+            seat.castShadow = true;
+            benchGroup.add(seat);
+            
+            // Bench legs
+            const legGeometry = new THREE.BoxGeometry(0.1, 0.6, 0.1);
+            for (let x = -1.3; x <= 1.3; x += 2.6) {
+                for (let z = -0.4; z <= 0.4; z += 0.8) {
+                    const leg = new THREE.Mesh(legGeometry, woodMaterial);
+                    leg.position.set(x, 0.3, z);
+                    leg.castShadow = true;
+                    benchGroup.add(leg);
+                }
+            }
+            
+            // Bench backrest
+            const backrestGeometry = new THREE.BoxGeometry(3, 0.8, 0.1);
+            const backrest = new THREE.Mesh(backrestGeometry, woodMaterial);
+            backrest.position.set(0, 1.1, -0.45);
+            backrest.castShadow = true;
+            benchGroup.add(backrest);
+            
+            // Position the bench - Closer to center
+            benchGroup.position.set(0, 0, 10);
+            benchGroup.rotation.y = Math.PI;
+            scene.add(benchGroup);
+            
+            // Add another bench - Closer to center
+            const benchGroup2 = benchGroup.clone();
+            benchGroup2.position.set(-10, 0, 0);
+            benchGroup2.rotation.y = Math.PI / 2;
+            scene.add(benchGroup2);
+        }
+        
+        addBench();
+
         // Lighting setup
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
         scene.add(ambientLight);
 
         const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
-        directionalLight.position.set(50, 100, 50);
+        directionalLight.position.set(25, 50, 25); // Adjusted for smaller map
         directionalLight.castShadow = true;
         directionalLight.shadow.mapSize.width = 2048;
         directionalLight.shadow.mapSize.height = 2048;
         directionalLight.shadow.camera.near = 0.5;
         directionalLight.shadow.camera.far = 500;
-        directionalLight.shadow.camera.left = -70;
-        directionalLight.shadow.camera.right = 70;
-        directionalLight.shadow.camera.top = 70;
-        directionalLight.shadow.camera.bottom = -70;
+        directionalLight.shadow.camera.left = -35;
+        directionalLight.shadow.camera.right = 35;
+        directionalLight.shadow.camera.top = 35;
+        directionalLight.shadow.camera.bottom = -35;
         scene.add(directionalLight);
 
         const hemisphereLight = new THREE.HemisphereLight(0x87ceeb, 0x7cfc00, 0.3);
@@ -740,7 +923,7 @@
         orbitControls.enableDamping = true;
         orbitControls.dampingFactor = 0.05;
         orbitControls.minDistance = 5;
-        orbitControls.maxDistance = 50;
+        orbitControls.maxDistance = 40; // Reduced for smaller map
         orbitControls.maxPolarAngle = Math.PI / 2 - 0.1;
         orbitControls.enabled = true;
 
@@ -761,16 +944,17 @@
             lookAtHeight: 1.0,
             rotationSpeed: 0.1,
             collisionRadius: 0.5,  // Added for collision detection
-            diagonalSpeedMultiplier: 0.7 // Reduce diagonal movement speed to avoid being too fast
+            diagonalSpeedMultiplier: 0.7, // Reduce diagonal movement speed to avoid being too fast
+            interactionDistance: 3.0 // Distance at which characters can interact
         };
 
-        // Blue character state
+        // Blue character state - Start closer to center
         const blueCharacter = {
             model: null,
             mixer: null,
             animations: {},
             currentAnimation: null,
-            position: new THREE.Vector3(-20, 1, 0),
+            position: new THREE.Vector3(-10, 1, 0), // Closer to center
             velocity: new THREE.Vector3(0, 0, 0),
             rotation: 0,
             targetRotation: 0,
@@ -781,16 +965,17 @@
             isLookingAround: false,
             previousState: null,
             isLoaded: false,
-            actionHistory: []
+            actionHistory: [],
+            chatBubble: document.getElementById('blue-chat-bubble')
         };
 
-        // Red character state
+        // Red character state - Start closer to center
         const redCharacter = {
             model: null,
             mixer: null,
             animations: {},
             currentAnimation: null,
-            position: new THREE.Vector3(20, 1, 0), // Start red character on opposite side
+            position: new THREE.Vector3(10, 1, 0), // Closer to center
             velocity: new THREE.Vector3(0, 0, 0),
             rotation: 0,
             targetRotation: 0,
@@ -801,7 +986,8 @@
             isLookingAround: false,
             previousState: null,
             isLoaded: false,
-            actionHistory: []
+            actionHistory: [],
+            chatBubble: document.getElementById('red-chat-bubble')
         };
 
         // AI control state
@@ -948,883 +1134,771 @@
                             }
                         }
                         
-                        document.getElementById('debug-info').innerHTML = 'All models loaded successfully';
+                        document.getElementById('debug-info').innerHTML = 'Both characters loaded. Ready to start simulation.';
+                        
+                        // Both models are loaded, enable the start button
+                        document.getElementById('load-models-btn').disabled = false;
+                        document.getElementById('model-status').textContent = "Models loaded. Click Start to begin.";
+                        
+                        blueModelLoaded = true;
+                        redModelLoaded = true;
                     },
-                    function (progress) {
-                        const percent = (progress.loaded / progress.total * 100).toFixed(0);
-                        document.getElementById('debug-info').innerHTML = `Loading red character: ${percent}%`;
+                    function (xhr) {
+                        document.getElementById('debug-info').innerHTML = 
+                            `Loading red character: ${Math.floor(xhr.loaded / xhr.total * 100)}%`;
                     },
                     function (error) {
-                        console.error('Error loading red character:', error);
-                        document.getElementById('debug-info').innerHTML = 'Red character loading error: ' + error.message;
+                        console.error('Error loading red character model:', error);
+                        document.getElementById('debug-info').innerHTML = 'Error loading red character model.';
                     }
                 );
             },
-            function (progress) {
-                const percent = (progress.loaded / progress.total * 100).toFixed(0);
-                document.getElementById('debug-info').innerHTML = `Loading blue character: ${percent}%`;
+            function (xhr) {
+                document.getElementById('debug-info').innerHTML = 
+                    `Loading blue character: ${Math.floor(xhr.loaded / xhr.total * 100)}%`;
             },
             function (error) {
-                console.error('Error loading blue character:', error);
-                document.getElementById('debug-info').innerHTML = 'Blue character loading error: ' + error.message;
+                console.error('Error loading blue character model:', error);
+                document.getElementById('debug-info').innerHTML = 'Error loading blue character model.';
             }
         );
 
-        // Animation handling for blue character
-        function setBlueAnimation(animName) {
-            if (!blueCharacter.mixer || !blueCharacter.animations[animName]) {
-                return;
+        // Handle animation transitions
+        function setBlueCharacterAnimation(animName) {
+            if (!blueCharacter.mixer || !blueCharacter.animations[animName]) return;
+            
+            if (blueCharacter.currentAnimation === animName) return;
+            
+            const prevAnim = blueCharacter.currentAnimation;
+            const nextAnim = animName;
+            
+            if (prevAnim && blueCharacter.animations[prevAnim]) {
+                blueCharacter.animations[prevAnim].fadeOut(0.5);
             }
             
-            if (blueCharacter.currentAnimation !== animName || 
-                (animName === 'RUN' && blueCharacter.previousState !== blueCharacter.isSprinting)) {
-                const prevAnim = blueCharacter.animations[blueCharacter.currentAnimation];
-                const nextAnim = blueCharacter.animations[animName];
-                
-                nextAnim.reset().fadeIn(0.2).play();
-                nextAnim.timeScale = (animName === 'RUN' && blueCharacter.isSprinting) ? 1.25 : 1;
-                
-                if (prevAnim && prevAnim !== nextAnim) {
-                    prevAnim.fadeOut(0.2);
-                }
-                
-                blueCharacter.currentAnimation = animName;
-                blueCharacter.previousState = blueCharacter.isSprinting;
-            }
+            blueCharacter.animations[nextAnim].reset().fadeIn(0.5).play();
+            blueCharacter.currentAnimation = nextAnim;
         }
 
-        // Animation handling for red character
-        function setRedAnimation(animName) {
-            if (!redCharacter.mixer || !redCharacter.animations[animName]) {
-                return;
+        function setRedCharacterAnimation(animName) {
+            if (!redCharacter.mixer || !redCharacter.animations[animName]) return;
+            
+            if (redCharacter.currentAnimation === animName) return;
+            
+            const prevAnim = redCharacter.currentAnimation;
+            const nextAnim = animName;
+            
+            if (prevAnim && redCharacter.animations[prevAnim]) {
+                redCharacter.animations[prevAnim].fadeOut(0.5);
             }
             
-            if (redCharacter.currentAnimation !== animName || 
-                (animName === 'RUN' && redCharacter.previousState !== redCharacter.isSprinting)) {
-                const prevAnim = redCharacter.animations[redCharacter.currentAnimation];
-                const nextAnim = redCharacter.animations[animName];
-                
-                nextAnim.reset().fadeIn(0.2).play();
-                nextAnim.timeScale = (animName === 'RUN' && redCharacter.isSprinting) ? 1.25 : 1;
-                
-                if (prevAnim && prevAnim !== nextAnim) {
-                    prevAnim.fadeOut(0.2);
-                }
-                
-                redCharacter.currentAnimation = animName;
-                redCharacter.previousState = redCharacter.isSprinting;
-            }
+            redCharacter.animations[nextAnim].reset().fadeIn(0.5).play();
+            redCharacter.currentAnimation = nextAnim;
         }
 
-        // Ground detection with multiple surfaces
-        function checkGrounded(entity) {
-            const raycaster = new THREE.Raycaster(
-                entity.position.clone().add(new THREE.Vector3(0, 0.5, 0)),
-                new THREE.Vector3(0, -1, 0),
-                0,
-                characterControls.groundDetectionRayLength
+        // Check if character is grounded
+        function isGrounded(character) {
+            const raycaster = new THREE.Raycaster();
+            raycaster.set(
+                character.position.clone(),
+                new THREE.Vector3(0, -1, 0)
             );
-            const intersects = raycaster.intersectObjects([ground, platform, floor]);
             
-            entity.isGrounded = intersects.length > 0;
-            if (entity.isGrounded) {
-                entity.position.y = intersects[0].point.y + characterControls.groundOffset;
-            }
+            const intersects = raycaster.intersectObjects([ground, floor, platform]);
             
-            return entity.isGrounded;
+            return intersects.length > 0 && 
+                   intersects[0].distance < characterControls.groundDetectionRayLength;
         }
 
-        // Boundary collision detection
-        function checkBoundaryCollision(newPosition) {
-            // Check if the new position would be outside the boundaries
-            if (newPosition.x < boundaries.minX || newPosition.x > boundaries.maxX ||
-                newPosition.z < boundaries.minZ || newPosition.z > boundaries.maxZ) {
-                return true; // Collision detected
-            }
-            return false; // No collision
+        // Check boundary collision
+        function checkBoundaryCollision(position) {
+            return {
+                x: Math.max(boundaries.minX, Math.min(boundaries.maxX, position.x)),
+                y: position.y,
+                z: Math.max(boundaries.minZ, Math.min(boundaries.maxZ, position.z))
+            };
         }
 
-        // Check if characters are close enough for a tag
-        function checkTagCollision() {
-            if (!blueCharacter.isLoaded || !redCharacter.isLoaded || !gameState.isActive) return false;
-            
+        // Check if characters are close enough for interaction
+        function checkInteraction() {
             const distance = blueCharacter.position.distanceTo(redCharacter.position);
-            const currentTime = performance.now() / 1000; // Convert to seconds
-            
-            // Only allow tagging if cooldown has passed
-            if (distance <= characterControls.collisionRadius * 2 && 
-                currentTime - gameState.lastTagTime > gameState.tagCooldown) {
-                return true;
-            }
-            
-            return false;
+            return distance < characterControls.interactionDistance;
         }
-
-        // Handle tag event
-        function handleTag() {
-            // Increment tag count
-            gameState.tagCount++;
-            document.getElementById('tag-counter').textContent = `Tags: ${gameState.tagCount}`;
-            
-            // Swap roles
-            gameState.blueIsChaser = !gameState.blueIsChaser;
-            
-            // Update last tag time
-            gameState.lastTagTime = performance.now() / 1000;
-            
-            // Show role change indicator
-            const roleIndicator = document.getElementById('role-indicator');
-            if (gameState.blueIsChaser) {
-                roleIndicator.innerHTML = `<span class="chaser">Blue is now CHASER!</span><br><span class="runner">Red is now RUNNER!</span>`;
-            } else {
-                roleIndicator.innerHTML = `<span class="chaser">Red is now CHASER!</span><br><span class="runner">Blue is now RUNNER!</span>`;
-            }
-            
-            roleIndicator.style.opacity = 1;
-            gameState.showingRoleChange = true;
-            
-            // Hide role indicator after 2 seconds
-            setTimeout(() => {
-                roleIndicator.style.opacity = 0;
-                gameState.showingRoleChange = false;
-            }, 2000);
-        }
-
-        // Window resize handler
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        });
-
-        // Model loading button
-        document.getElementById('load-models-btn').addEventListener('click', async () => {
-            const blueModelChoice = document.getElementById('model-1-choice').value;
-            const redModelChoice = document.getElementById('model-2-choice').value;
-            const initialChaser = document.getElementById('initial-chaser').value;
-            const modelStatus = document.getElementById('model-status');
-            const loadButton = document.getElementById('load-models-btn');
-            
-            // Set initial chaser based on selection
-            gameState.blueIsChaser = initialChaser === 'blue';
-            
-            loadButton.disabled = true;
-            modelStatus.textContent = `Loading models...`;
-            
-            try {
-                // Check blue model
-                const blueModelResponse = await fetch(`${PYTHON_SERVER_URL}/check-model`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        model_id: blueModelChoice
-                    })
-                });
-                
-                const blueModelData = await blueModelResponse.json();
-                
-                if (blueModelData.success) {
-                    modelStatus.textContent = `Blue model loaded. Loading Red model...`;
-                    blueModelLoaded = true;
-                } else {
-                    modelStatus.textContent = `Error loading Blue model: ${blueModelData.error}`;
-                    loadButton.disabled = false;
-                    return;
-                }
-                
-                // Check red model
-                const redModelResponse = await fetch(`${PYTHON_SERVER_URL}/check-model`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        model_id: redModelChoice
-                    })
-                });
-                
-                const redModelData = await redModelResponse.json();
-                
-                if (redModelData.success) {
-                    modelStatus.textContent = `Both models loaded successfully`;
-                    redModelLoaded = true;
-                    
-                    // Start the game
-                    gameState.isActive = true;
-                    
-                    // Show initial roles
-                    const roleIndicator = document.getElementById('role-indicator');
-                    if (gameState.blueIsChaser) {
-                        roleIndicator.innerHTML = `<span class="chaser">Blue is CHASER!</span><br><span class="runner">Red is RUNNER!</span>`;
-                    } else {
-                        roleIndicator.innerHTML = `<span class="chaser">Red is CHASER!</span><br><span class="runner">Blue is RUNNER!</span>`;
-                    }
-                    
-                    roleIndicator.style.opacity = 1;
-                    gameState.showingRoleChange = true;
-                    
-                    // Hide role indicator after 3 seconds
-                    setTimeout(() => {
-                        roleIndicator.style.opacity = 0;
-                        gameState.showingRoleChange = false;
-                    }, 3000);
-                    
-                    // Get initial instructions for both characters
-                    if (blueCharacter.isLoaded && !isLoadingBlueInstructions) {
-                        isLoadingBlueInstructions = true;
-                        blueAIInstructions = await getBlueAIInstructions(
-                            blueCharacter.position, 
-                            blueCharacter.actionHistory, 
-                            blueHitWall,
-                            redCharacter.position
-                        );
-                        isLoadingBlueInstructions = false;
-                    }
-                    
-                    if (redCharacter.isLoaded && !isLoadingRedInstructions) {
-                        isLoadingRedInstructions = true;
-                        redAIInstructions = await getRedAIInstructions(
-                            redCharacter.position, 
-                            redCharacter.actionHistory, 
-                            redHitWall,
-                            blueCharacter.position
-                        );
-                        isLoadingRedInstructions = false;
-                    }
-                } else {
-                    modelStatus.textContent = `Error loading Red model: ${redModelData.error}`;
-                }
-            } catch (error) {
-                modelStatus.textContent = `Connection error: ${error.message}`;
-                console.error('Error checking models:', error);
-            }
-            
-            loadButton.disabled = false;
-        });
 
         // Process blue character movement based on AI instructions
-        function processBlueCharacterMovement(delta) {
-            if (!blueCharacter.isLoaded || !blueModelLoaded || isLoadingBlueInstructions || !gameState.isActive) {
+        function processBlueCharacterMovement(deltaTime) {
+            if (!blueCharacter.isLoaded || !simulationState.isActive) return;
+            
+            // Check if we need to get new instructions
+            if (blueAIInstructions.length === 0 || 
+                (blueInstructionIndex >= blueAIInstructions.length && !isLoadingBlueInstructions)) {
+                
+                if (!isLoadingBlueInstructions) {
+                    isLoadingBlueInstructions = true;
+                    
+                    getBlueAIInstructions(
+                        blueCharacter.position, 
+                        blueCharacter.actionHistory,
+                        blueHitWall,
+                        redCharacter.position
+                    ).then(instructions => {
+                        blueAIInstructions = instructions;
+                        blueInstructionIndex = 0;
+                        blueInstructionTimer = 0;
+                        isLoadingBlueInstructions = false;
+                        blueHitWall = false;
+                        
+                        // Update UI with current instruction
+                        if (instructions.length > 0) {
+                            document.getElementById('ai-status').innerHTML = 
+                                `Action: ${instructions[0].action}<br>` +
+                                `Thought: ${instructions[0].thought || 'None'}<br>` +
+                                `Message: ${instructions[0].message || 'None'}`;
+                        }
+                    });
+                }
+                
+                // Use default behavior while waiting for instructions
+                blueCharacter.velocity.x *= characterControls.friction;
+                blueCharacter.velocity.z *= characterControls.friction;
                 return;
             }
             
-            checkGrounded(blueCharacter);
+            // Get current instruction
+            const instruction = blueAIInstructions[blueInstructionIndex];
             
-            if (blueAIInstructions.length > 0) {
-                const currentInstruction = blueAIInstructions[blueInstructionIndex];
+            // Update timer and progress bar
+            blueInstructionTimer += deltaTime;
+            const progress = Math.min(blueInstructionTimer / (instruction.duration || 1), 1);
+            document.getElementById('action-progress').style.width = `${progress * 100}%`;
+            
+            // Process the instruction
+            switch (instruction.action) {
+                case 'move_forward':
+                    blueCharacter.velocity.z = -characterControls.moveSpeed;
+                    blueCharacter.targetRotation = Math.PI;
+                    blueCharacter.isMoving = true;
+                    setBlueCharacterAnimation('WALK');
+                    break;
+                    
+                case 'move_backward':
+                    blueCharacter.velocity.z = characterControls.moveSpeed;
+                    blueCharacter.targetRotation = 0;
+                    blueCharacter.isMoving = true;
+                    setBlueCharacterAnimation('WALK');
+                    break;
+                    
+                case 'move_left':
+                    blueCharacter.velocity.x = -characterControls.moveSpeed;
+                    blueCharacter.targetRotation = Math.PI / 2;
+                    blueCharacter.isMoving = true;
+                    setBlueCharacterAnimation('WALK');
+                    break;
+                    
+                case 'move_right':
+                    blueCharacter.velocity.x = characterControls.moveSpeed;
+                    blueCharacter.targetRotation = -Math.PI / 2;
+                    blueCharacter.isMoving = true;
+                    setBlueCharacterAnimation('WALK');
+                    break;
+                    
+                case 'move_forward_left':
+                    blueCharacter.velocity.z = -characterControls.moveSpeed * characterControls.diagonalSpeedMultiplier;
+                    blueCharacter.velocity.x = -characterControls.moveSpeed * characterControls.diagonalSpeedMultiplier;
+                    blueCharacter.targetRotation = Math.PI * 3/4;
+                    blueCharacter.isMoving = true;
+                    setBlueCharacterAnimation('WALK');
+                    break;
+                    
+                case 'move_forward_right':
+                    blueCharacter.velocity.z = -characterControls.moveSpeed * characterControls.diagonalSpeedMultiplier;
+                    blueCharacter.velocity.x = characterControls.moveSpeed * characterControls.diagonalSpeedMultiplier;
+                    blueCharacter.targetRotation = Math.PI * 5/4;
+                    blueCharacter.isMoving = true;
+                    setBlueCharacterAnimation('WALK');
+                    break;
+                    
+                case 'move_backward_left':
+                    blueCharacter.velocity.z = characterControls.moveSpeed * characterControls.diagonalSpeedMultiplier;
+                    blueCharacter.velocity.x = -characterControls.moveSpeed * characterControls.diagonalSpeedMultiplier;
+                    blueCharacter.targetRotation = Math.PI / 4;
+                    blueCharacter.isMoving = true;
+                    setBlueCharacterAnimation('WALK');
+                    break;
+                    
+                case 'move_backward_right':
+                    blueCharacter.velocity.z = characterControls.moveSpeed * characterControls.diagonalSpeedMultiplier;
+                    blueCharacter.velocity.x = characterControls.moveSpeed * characterControls.diagonalSpeedMultiplier;
+                    blueCharacter.targetRotation = -Math.PI / 4;
+                    blueCharacter.isMoving = true;
+                    setBlueCharacterAnimation('WALK');
+                    break;
+                    
+                case 'run_forward':
+                    blueCharacter.velocity.z = -characterControls.moveSpeed * characterControls.sprintMultiplier;
+                    blueCharacter.targetRotation = Math.PI;
+                    blueCharacter.isMoving = true;
+                    blueCharacter.isSprinting = true;
+                    setBlueCharacterAnimation('RUN');
+                    break;
+                    
+                case 'jump':
+                    if (blueCharacter.isGrounded) {
+                        blueCharacter.velocity.y = characterControls.jumpForce;
+                        blueCharacter.isJumping = true;
+                        setBlueCharacterAnimation('JUMP');
+                    }
+                    break;
+                    
+                case 'look_around':
+                    blueCharacter.isLookingAround = true;
+                    blueCharacter.targetRotation += deltaTime * 2;
+                    setBlueCharacterAnimation('IDLE');
+                    break;
+                    
+                case 'wave':
+                    blueCharacter.isMoving = false;
+                    setBlueCharacterAnimation('WAVE');
+                    break;
+                    
+                case 'idle':
+                default:
+                    blueCharacter.isMoving = false;
+                    blueCharacter.velocity.x *= characterControls.friction;
+                    blueCharacter.velocity.z *= characterControls.friction;
+                    setBlueCharacterAnimation('IDLE');
+                    break;
+            }
+            
+            // Check if instruction is complete
+            if (blueInstructionTimer >= (instruction.duration || 1)) {
+                // Record the action in history
+                blueCharacter.actionHistory.push({
+                    action: instruction.action,
+                    timestamp: Date.now()
+                });
                 
-                if (!currentInstruction || !currentInstruction.action) {
-                    blueInstructionTimer = 0;
-                    blueInstructionIndex++;
-                    return;
+                // Limit history size
+                if (blueCharacter.actionHistory.length > 20) {
+                    blueCharacter.actionHistory.shift();
                 }
                 
-                blueInstructionTimer += delta;
+                // Move to next instruction
+                blueInstructionIndex++;
+                blueInstructionTimer = 0;
                 
-                const progressPercent = (blueInstructionTimer / currentInstruction.duration) * 100;
-                document.getElementById('action-progress').style.width = `${Math.min(progressPercent, 100)}%`;
-                
-                document.getElementById('ai-status').innerHTML = 
-                    `<strong>Action:</strong> ${formatActionName(currentInstruction.action)}<br>` +
-                    `<strong>Thought:</strong> ${currentInstruction.thought || "..."}<br>` +
-                    `<strong>Progress:</strong> ${Math.min(Math.floor(progressPercent), 100)}%<br>` +
-                    `<strong>Role:</strong> ${gameState.blueIsChaser ? '<span class="chaser">CHASER</span>' : '<span class="runner">RUNNER</span>'}`;
-                
+                // Reset movement state
                 blueCharacter.isMoving = false;
                 blueCharacter.isSprinting = false;
                 blueCharacter.isJumping = false;
                 blueCharacter.isLookingAround = false;
-                blueCharacter.velocity.x = 0;
-                blueCharacter.velocity.z = 0;
                 
-                // Calculate movement directions
-                const forward = new THREE.Vector3(0, 0, -1);
-                forward.applyAxisAngle(new THREE.Vector3(0, 1, 0), 0);
-                forward.y = 0;
-                forward.normalize();
-                
-                const right = new THREE.Vector3();
-                right.crossVectors(new THREE.Vector3(0, 1, 0), forward);
-                right.normalize();
-                
-                let moveDirection = new THREE.Vector3();
-                
-                switch (currentInstruction.action.toLowerCase()) {
-                    case 'moveforward':
-                        moveDirection.add(forward);
-                        blueCharacter.isMoving = true;
-                        break;
-                    case 'movebackward':
-                        moveDirection.sub(forward);
-                        blueCharacter.isMoving = true;
-                        break;
-                    case 'moveleft':
-                        moveDirection.sub(right);
-                        blueCharacter.isMoving = true;
-                        break;
-                    case 'moveright':
-                        moveDirection.add(right);
-                        blueCharacter.isMoving = true;
-                        break;
-                    case 'movediagonalforwardleft':
-                        moveDirection.add(forward).sub(right);
-                        moveDirection.multiplyScalar(characterControls.diagonalSpeedMultiplier);
-                        blueCharacter.isMoving = true;
-                        break;
-                    case 'movediagonalforwardright':
-                        moveDirection.add(forward).add(right);
-                        moveDirection.multiplyScalar(characterControls.diagonalSpeedMultiplier);
-                        blueCharacter.isMoving = true;
-                        break;
-                    case 'movediagonalbackwardleft':
-                        moveDirection.sub(forward).sub(right);
-                        moveDirection.multiplyScalar(characterControls.diagonalSpeedMultiplier);
-                        blueCharacter.isMoving = true;
-                        break;
-                    case 'movediagonalbackwardright':
-                        moveDirection.sub(forward).add(right);
-                        moveDirection.multiplyScalar(characterControls.diagonalSpeedMultiplier);
-                        blueCharacter.isMoving = true;
-                        break;
-                    case 'sprint':
-                        moveDirection.add(forward);
-                        blueCharacter.isMoving = true;
-                        blueCharacter.isSprinting = true;
-                        break;
-                    case 'jump':
-                        if (blueCharacter.isGrounded) {
-                            blueCharacter.isJumping = true;
-                            blueCharacter.velocity.y = characterControls.jumpForce;
-                        }
-                        break;
-                    case 'idle':
-                        // No movement in idle state
-                        break;
-                    case 'lookaround':
-                        blueCharacter.isLookingAround = true;
-                        break;
-                    case 'explore':
-                        moveDirection.add(forward);
-                        blueCharacter.isMoving = true;
-                        // Occasionally change direction during exploration
-                        if (Math.random() < 0.05) {
-                            blueCharacter.targetRotation += (Math.random() - 0.5) * 0.5;
-                        }
-                        break;
-                    default:
-                        console.warn('Unknown action for blue character:', currentInstruction.action);
-                }
-                
-                // If we're chasing, try to move toward red character
-                if (gameState.blueIsChaser && blueCharacter.isMoving) {
-                    const directionToRed = new THREE.Vector3()
-                        .subVectors(redCharacter.position, blueCharacter.position)
-                        .normalize();
-                    
-                    // Blend between the AI direction and direction to red
-                    moveDirection.lerp(directionToRed, 0.3);
-                    moveDirection.normalize();
-                    
-                    // Update rotation to face movement direction
-                    blueCharacter.targetRotation = Math.atan2(moveDirection.x, moveDirection.z);
-                }
-                // If we're running away, try to move away from red character
-                else if (!gameState.blueIsChaser && blueCharacter.isMoving) {
-                    const directionFromRed = new THREE.Vector3()
-                        .subVectors(blueCharacter.position, redCharacter.position)
-                        .normalize();
-                    
-                    // Blend between the AI direction and direction away from red
-                    moveDirection.lerp(directionFromRed, 0.3);
-                    moveDirection.normalize();
-                    
-                    // Update rotation to face movement direction
-                    blueCharacter.targetRotation = Math.atan2(moveDirection.x, moveDirection.z);
-                }
-                
-                // Smoothly rotate toward target rotation
-                if (blueCharacter.rotation !== blueCharacter.targetRotation) {
-                    const rotDiff = blueCharacter.targetRotation - blueCharacter.rotation;
-                    
-                    // Handle angle wrapping
-                    let rotStep = rotDiff;
-                    if (rotDiff > Math.PI) rotStep = rotDiff - Math.PI * 2;
-                    if (rotDiff < -Math.PI) rotStep = rotDiff + Math.PI * 2;
-                    
-                    blueCharacter.rotation += rotStep * characterControls.rotationSpeed;
-                    
-                    // Keep rotation in range [-PI, PI]
-                    if (blueCharacter.rotation > Math.PI) blueCharacter.rotation -= Math.PI * 2;
-                    if (blueCharacter.rotation < -Math.PI) blueCharacter.rotation += Math.PI * 2;
-                    
-                    if (blueCharacter.model) {
-                        blueCharacter.model.rotation.y = blueCharacter.rotation;
-                    }
-                }
-                
-                if (blueCharacter.isMoving) {
-                    const speed = characterControls.moveSpeed * 
-                        (blueCharacter.isSprinting ? characterControls.sprintMultiplier : 1) * 
-                        (blueCharacter.isGrounded ? 1 : characterControls.airControl);
-                    
-                    // Rotate movement direction to match character rotation
-                    const rotatedDirection = moveDirection.clone();
-                    rotatedDirection.applyAxisAngle(new THREE.Vector3(0, 1, 0), blueCharacter.rotation);
-                    
-                    blueCharacter.velocity.x = rotatedDirection.x * speed;
-                    blueCharacter.velocity.z = rotatedDirection.z * speed;
-                } else {
-                    blueCharacter.velocity.x *= characterControls.friction;
-                    blueCharacter.velocity.z *= characterControls.friction;
-                }
-                
-                // Apply gravity and ground constraints
-                if (!blueCharacter.isGrounded) {
-                    blueCharacter.velocity.y -= characterControls.gravity;
-                } else if (!blueCharacter.isJumping) {
-                    blueCharacter.velocity.y = 0;
-                }
-                
-                // Set appropriate animation based on character state
-                if (!blueCharacter.isGrounded && blueCharacter.velocity.y < 0) {
-                    setBlueAnimation('FALL');
-                } else if (blueCharacter.isJumping) {
-                    setBlueAnimation('JUMP');
-                } else if (blueCharacter.isMoving) {
-                    if (blueCharacter.isSprinting && blueCharacter.animations['RUN']) {
-                        setBlueAnimation('RUN');
-                    } else if (blueCharacter.animations['WALK']) {
-                        setBlueAnimation('WALK');
-                    } else if (blueCharacter.animations['RUN']) {
-                        setBlueAnimation('RUN');
-                    }
-                } else if (blueCharacter.isLookingAround && blueCharacter.animations['IDLE_LOOK']) {
-                    setBlueAnimation('IDLE_LOOK');
-                } else {
-                    setBlueAnimation('IDLE');
-                }
-                
-                // Calculate new position with velocity
-                const newPosition = blueCharacter.position.clone().add(blueCharacter.velocity);
-                
-                // Check for boundary collisions before applying movement
-                if (!checkBoundaryCollision(newPosition)) {
-                    // No collision, apply movement
-                    blueCharacter.position.copy(newPosition);
-                    blueHitWall = false;
-                } else {
-                    // Collision detected, stop movement in that direction
-                    blueHitWall = true;
-                    
-                    // Try moving only in X direction
-                    const newPositionX = blueCharacter.position.clone();
-                    newPositionX.x += blueCharacter.velocity.x;
-                    
-                    if (!checkBoundaryCollision(newPositionX)) {
-                        blueCharacter.position.x = newPositionX.x;
-                    }
-                    
-                    // Try moving only in Z direction
-                    const newPositionZ = blueCharacter.position.clone();
-                    newPositionZ.z += blueCharacter.velocity.z;
-                    
-                    if (!checkBoundaryCollision(newPositionZ)) {
-                        blueCharacter.position.z = newPositionZ.z;
-                    }
-                    
-                    // Reset velocity in directions that had collisions
-                    if (blueCharacter.position.x !== newPosition.x) {
-                        blueCharacter.velocity.x = 0;
-                    }
-                    if (blueCharacter.position.z !== newPosition.z) {
-                        blueCharacter.velocity.z = 0;
-                    }
-                }
-                
-                // Update model position
-                if (blueCharacter.model) {
-                    blueCharacter.model.position.copy(blueCharacter.position);
-                }
-                
-                // Check if current instruction is complete
-                if (blueInstructionTimer >= currentInstruction.duration) {
-                    blueCharacter.actionHistory.push({
-                        action: currentInstruction.action,
-                        thought: currentInstruction.thought,
-                        position: {
-                            x: blueCharacter.position.x,
-                            y: blueCharacter.position.y,
-                            z: blueCharacter.position.z
-                        },
-                        grid: getGridPosition(blueCharacter.position)
-                    });
-                    
-                    blueInstructionTimer = 0;
-                    blueInstructionIndex++;
-                    
-                    // Get new instruction when current one is complete
-                    if (blueInstructionIndex >= blueAIInstructions.length) {
-                        isLoadingBlueInstructions = true;
-                        document.getElementById('ai-thinking').textContent = "Planning next action...";
-                        
-                        getBlueAIInstructions(
-                            blueCharacter.position, 
-                            blueCharacter.actionHistory,
-                            blueHitWall,
-                            redCharacter.position
-                        ).then(instructions => {
-                            blueAIInstructions = instructions;
-                            blueInstructionIndex = 0;
-                            blueInstructionTimer = 0;
-                            isLoadingBlueInstructions = false;
-                        }).catch(error => {
-                            console.error("Error getting new blue AI instructions:", error);
-                            isLoadingBlueInstructions = false;
-                            document.getElementById('ai-thinking').textContent = "Error planning. Using fallback behavior.";
-                            blueAIInstructions = [
-                                { action: 'idle', duration: 2, thought: 'Thinking what to do next' }
-                            ];
-                            blueInstructionIndex = 0;
-                        });
-                    }
+                // Update UI with next instruction if available
+                if (blueInstructionIndex < blueAIInstructions.length) {
+                    const nextInstruction = blueAIInstructions[blueInstructionIndex];
+                    document.getElementById('ai-status').innerHTML = 
+                        `Action: ${nextInstruction.action}<br>` +
+                        `Thought: ${nextInstruction.thought || 'None'}<br>` +
+                        `Message: ${nextInstruction.message || 'None'}`;
                 }
             }
         }
 
         // Process red character movement based on AI instructions
-        function processRedCharacterMovement(delta) {
-            if (!redCharacter.isLoaded || !redModelLoaded || isLoadingRedInstructions || !gameState.isActive) {
+        function processRedCharacterMovement(deltaTime) {
+            if (!redCharacter.isLoaded || !simulationState.isActive) return;
+            
+            // Check if we need to get new instructions
+            if (redAIInstructions.length === 0 || 
+                (redInstructionIndex >= redAIInstructions.length && !isLoadingRedInstructions)) {
+                
+                if (!isLoadingRedInstructions) {
+                    isLoadingRedInstructions = true;
+                    
+                    getRedAIInstructions(
+                        redCharacter.position, 
+                        redCharacter.actionHistory,
+                        redHitWall,
+                        blueCharacter.position
+                    ).then(instructions => {
+                        redAIInstructions = instructions;
+                        redInstructionIndex = 0;
+                        redInstructionTimer = 0;
+                        isLoadingRedInstructions = false;
+                        redHitWall = false;
+                        
+                        // Update UI with current instruction
+                        if (instructions.length > 0) {
+                            document.getElementById('red-ai-status').innerHTML = 
+                                `Action: ${instructions[0].action}<br>` +
+                                `Thought: ${instructions[0].thought || 'None'}<br>` +
+                                `Message: ${instructions[0].message || 'None'}`;
+                        }
+                    });
+                }
+                
+                // Use default behavior while waiting for instructions
+                redCharacter.velocity.x *= characterControls.friction;
+                redCharacter.velocity.z *= characterControls.friction;
                 return;
             }
             
-            checkGrounded(redCharacter);
+            // Get current instruction
+            const instruction = redAIInstructions[redInstructionIndex];
             
-            if (redAIInstructions.length > 0) {
-                const currentInstruction = redAIInstructions[redInstructionIndex];
+            // Update timer and progress bar
+            redInstructionTimer += deltaTime;
+            const progress = Math.min(redInstructionTimer / (instruction.duration || 1), 1);
+            document.getElementById('red-action-progress').style.width = `${progress * 100}%`;
+            
+            // Process the instruction
+            switch (instruction.action) {
+                case 'move_forward':
+                    redCharacter.velocity.z = -characterControls.moveSpeed;
+                    redCharacter.targetRotation = Math.PI;
+                    redCharacter.isMoving = true;
+                    setRedCharacterAnimation('WALK');
+                    break;
+                    
+                case 'move_backward':
+                    redCharacter.velocity.z = characterControls.moveSpeed;
+                    redCharacter.targetRotation = 0;
+                    redCharacter.isMoving = true;
+                    setRedCharacterAnimation('WALK');
+                    break;
+                    
+                case 'move_left':
+                    redCharacter.velocity.x = -characterControls.moveSpeed;
+                    redCharacter.targetRotation = Math.PI / 2;
+                    redCharacter.isMoving = true;
+                    setRedCharacterAnimation('WALK');
+                    break;
+                    
+                case 'move_right':
+                    redCharacter.velocity.x = characterControls.moveSpeed;
+                    redCharacter.targetRotation = -Math.PI / 2;
+                    redCharacter.isMoving = true;
+                    setRedCharacterAnimation('WALK');
+                    break;
+                    
+                case 'move_forward_left':
+                    redCharacter.velocity.z = -characterControls.moveSpeed * characterControls.diagonalSpeedMultiplier;
+                    redCharacter.velocity.x = -characterControls.moveSpeed * characterControls.diagonalSpeedMultiplier;
+                    redCharacter.targetRotation = Math.PI * 3/4;
+                    redCharacter.isMoving = true;
+                    setRedCharacterAnimation('WALK');
+                    break;
+                    
+                case 'move_forward_right':
+                    redCharacter.velocity.z = -characterControls.moveSpeed * characterControls.diagonalSpeedMultiplier;
+                    redCharacter.velocity.x = characterControls.moveSpeed * characterControls.diagonalSpeedMultiplier;
+                    redCharacter.targetRotation = Math.PI * 5/4;
+                    redCharacter.isMoving = true;
+                    setRedCharacterAnimation('WALK');
+                    break;
+                    
+                case 'move_backward_left':
+                    redCharacter.velocity.z = characterControls.moveSpeed * characterControls.diagonalSpeedMultiplier;
+                    redCharacter.velocity.x = -characterControls.moveSpeed * characterControls.diagonalSpeedMultiplier;
+                    redCharacter.targetRotation = Math.PI / 4;
+                    redCharacter.isMoving = true;
+                    setRedCharacterAnimation('WALK');
+                    break;
+                    
+                case 'move_backward_right':
+                    redCharacter.velocity.z = characterControls.moveSpeed * characterControls.diagonalSpeedMultiplier;
+                    redCharacter.velocity.x = characterControls.moveSpeed * characterControls.diagonalSpeedMultiplier;
+                    redCharacter.targetRotation = -Math.PI / 4;
+                    redCharacter.isMoving = true;
+                    setRedCharacterAnimation('WALK');
+                    break;
+                    
+                case 'run_forward':
+                    redCharacter.velocity.z = -characterControls.moveSpeed * characterControls.sprintMultiplier;
+                    redCharacter.targetRotation = Math.PI;
+                    redCharacter.isMoving = true;
+                    redCharacter.isSprinting = true;
+                    setRedCharacterAnimation('RUN');
+                    break;
+                    
+                case 'jump':
+                    if (redCharacter.isGrounded) {
+                        redCharacter.velocity.y = characterControls.jumpForce;
+                        redCharacter.isJumping = true;
+                        setRedCharacterAnimation('JUMP');
+                    }
+                    break;
+                    
+                case 'look_around':
+                    redCharacter.isLookingAround = true;
+                    redCharacter.targetRotation += deltaTime * 2;
+                    setRedCharacterAnimation('IDLE');
+                    break;
+                    
+                case 'wave':
+                    redCharacter.isMoving = false;
+                    setRedCharacterAnimation('WAVE');
+                    break;
+                    
+                case 'idle':
+                default:
+                    redCharacter.isMoving = false;
+                    redCharacter.velocity.x *= characterControls.friction;
+                    redCharacter.velocity.z *= characterControls.friction;
+                    setRedCharacterAnimation('IDLE');
+                    break;
+            }
+            
+            // Check if instruction is complete
+            if (redInstructionTimer >= (instruction.duration || 1)) {
+                // Record the action in history
+                redCharacter.actionHistory.push({
+                    action: instruction.action,
+                    timestamp: Date.now()
+                });
                 
-                if (!currentInstruction || !currentInstruction.action) {
-                    redInstructionTimer = 0;
-                    redInstructionIndex++;
-                    return;
+                // Limit history size
+                if (redCharacter.actionHistory.length > 20) {
+                    redCharacter.actionHistory.shift();
                 }
                 
-                redInstructionTimer += delta;
+                // Move to next instruction
+                redInstructionIndex++;
+                redInstructionTimer = 0;
                 
-                const progressPercent = (redInstructionTimer / currentInstruction.duration) * 100;
-                document.getElementById('enemy-action-progress').style.width = `${Math.min(progressPercent, 100)}%`;
-                
-                document.getElementById('enemy-ai-status').innerHTML = 
-                    `<strong>Action:</strong> ${formatActionName(currentInstruction.action)}<br>` +
-                    `<strong>Thought:</strong> ${currentInstruction.thought || "..."}<br>` +
-                    `<strong>Progress:</strong> ${Math.min(Math.floor(progressPercent), 100)}%<br>` +
-                    `<strong>Role:</strong> ${!gameState.blueIsChaser ? '<span class="chaser">CHASER</span>' : '<span class="runner">RUNNER</span>'}`;
-                
+                // Reset movement state
                 redCharacter.isMoving = false;
                 redCharacter.isSprinting = false;
                 redCharacter.isJumping = false;
                 redCharacter.isLookingAround = false;
-                redCharacter.velocity.x = 0;
-                redCharacter.velocity.z = 0;
                 
-                // Calculate movement directions
-                const forward = new THREE.Vector3(0, 0, -1);
-                forward.applyAxisAngle(new THREE.Vector3(0, 1, 0), 0);
-                forward.y = 0;
-                forward.normalize();
-                
-                const right = new THREE.Vector3();
-                right.crossVectors(new THREE.Vector3(0, 1, 0), forward);
-                right.normalize();
-                
-                let moveDirection = new THREE.Vector3();
-                
-                switch (currentInstruction.action.toLowerCase()) {
-                    case 'moveforward':
-                        moveDirection.add(forward);
-                        redCharacter.isMoving = true;
-                        break;
-                    case 'movebackward':
-                        moveDirection.sub(forward);
-                        redCharacter.isMoving = true;
-                        break;
-                    case 'moveleft':
-                        moveDirection.sub(right);
-                        redCharacter.isMoving = true;
-                        break;
-                    case 'moveright':
-                        moveDirection.add(right);
-                        redCharacter.isMoving = true;
-                        break;
-                    case 'movediagonalforwardleft':
-                        moveDirection.add(forward).sub(right);
-                        moveDirection.multiplyScalar(characterControls.diagonalSpeedMultiplier);
-                        redCharacter.isMoving = true;
-                        break;
-                    case 'movediagonalforwardright':
-                        moveDirection.add(forward).add(right);
-                        moveDirection.multiplyScalar(characterControls.diagonalSpeedMultiplier);
-                        redCharacter.isMoving = true;
-                        break;
-                    case 'movediagonalbackwardleft':
-                        moveDirection.sub(forward).sub(right);
-                        moveDirection.multiplyScalar(characterControls.diagonalSpeedMultiplier);
-                        redCharacter.isMoving = true;
-                        break;
-                    case 'movediagonalbackwardright':
-                        moveDirection.sub(forward).add(right);
-                        moveDirection.multiplyScalar(characterControls.diagonalSpeedMultiplier);
-                        redCharacter.isMoving = true;
-                        break;
-                    case 'sprint':
-                        moveDirection.add(forward);
-                        redCharacter.isMoving = true;
-                        redCharacter.isSprinting = true;
-                        break;
-                    case 'jump':
-                        if (redCharacter.isGrounded) {
-                            redCharacter.isJumping = true;
-                            redCharacter.velocity.y = characterControls.jumpForce;
-                        }
-                        break;
-                    case 'idle':
-                        // No movement in idle state
-                        break;
-                    case 'lookaround':
-                        redCharacter.isLookingAround = true;
-                        break;
-                    case 'explore':
-                        moveDirection.add(forward);
-                        redCharacter.isMoving = true;
-                        // Occasionally change direction during exploration
-                        if (Math.random() < 0.05) {
-                            redCharacter.targetRotation += (Math.random() - 0.5) * 0.5;
-                        }
-                        break;
-                    default:
-                        console.warn('Unknown action for red character:', currentInstruction.action);
+                // Update UI with next instruction if available
+                if (redInstructionIndex < redAIInstructions.length) {
+                    const nextInstruction = redAIInstructions[redInstructionIndex];
+                    document.getElementById('red-ai-status').innerHTML = 
+                        `Action: ${nextInstruction.action}<br>` +
+                        `Thought: ${nextInstruction.thought || 'None'}<br>` +
+                        `Message: ${nextInstruction.message || 'None'}`;
                 }
+            }
+        }
+
+        // Update chatting state
+        function updateChattingState(deltaTime) {
+            if (!simulationState.chatting) return;
+            
+            simulationState.chattingTimer += deltaTime;
+            
+            // If chatting duration is reached, end the chat
+            if (simulationState.chattingTimer >= simulationState.chattingDuration) {
+                simulationState.chatting = false;
+                simulationState.chattingTimer = 0;
+                simulationState.lastInteractionTime = Date.now() / 1000;
                 
-                // If we're chasing, try to move toward blue character
-                if (!gameState.blueIsChaser && redCharacter.isMoving) {
-                    const directionToBlue = new THREE.Vector3()
-                        .subVectors(blueCharacter.position, redCharacter.position)
-                        .normalize();
-                    
-                    // Blend between the AI direction and direction to blue
-                    moveDirection.lerp(directionToBlue, 0.3);
-                    moveDirection.normalize();
-                    
-                    // Update rotation to face movement direction
-                    redCharacter.targetRotation = Math.atan2(moveDirection.x, moveDirection.z);
-                }
-                // If we're running away, try to move away from blue character
-                else if (gameState.blueIsChaser && redCharacter.isMoving) {
-                    const directionFromBlue = new THREE.Vector3()
-                        .subVectors(redCharacter.position, blueCharacter.position)
-                        .normalize();
-                    
-                    // Blend between the AI direction and direction away from blue
-                    moveDirection.lerp(directionFromBlue, 0.3);
-                    moveDirection.normalize();
-                    
-                    // Update rotation to face movement direction
-                    redCharacter.targetRotation = Math.atan2(moveDirection.x, moveDirection.z);
-                }
+                // Show interaction ended
+                const indicator = document.getElementById('interaction-indicator');
+                indicator.textContent = "Conversation Ended";
+                indicator.style.opacity = 1;
                 
-                // Smoothly rotate toward target rotation
-                if (redCharacter.rotation !== redCharacter.targetRotation) {
-                    const rotDiff = redCharacter.targetRotation - redCharacter.rotation;
-                    
-                    // Handle angle wrapping
-                    let rotStep = rotDiff;
-                    if (rotDiff > Math.PI) rotStep = rotDiff - Math.PI * 2;
-                    if (rotDiff < -Math.PI) rotStep = rotDiff + Math.PI * 2;
-                    
-                    redCharacter.rotation += rotStep * characterControls.rotationSpeed;
-                    
-                    // Keep rotation in range [-PI, PI]
-                    if (redCharacter.rotation > Math.PI) redCharacter.rotation -= Math.PI * 2;
-                    if (redCharacter.rotation < -Math.PI) redCharacter.rotation += Math.PI * 2;
-                    
-                    if (redCharacter.model) {
-                        redCharacter.model.rotation.y = redCharacter.rotation;
-                    }
-                }
+                setTimeout(() => {
+                    indicator.style.opacity = 0;
+                }, 2000);
+            }
+        }
+
+        // Handle character interaction
+        function handleInteraction() {
+            if (!simulationState.isActive) return;
+            
+            const now = Date.now() / 1000;
+            const isInteracting = checkInteraction();
+            
+            // Check if characters are close enough and not already chatting
+            if (isInteracting && 
+                !simulationState.chatting && 
+                now - simulationState.lastInteractionTime > simulationState.interactionCooldown) {
                 
-                if (redCharacter.isMoving) {
-                    const speed = characterControls.moveSpeed * 
-                        (redCharacter.isSprinting ? characterControls.sprintMultiplier : 1) * 
-                        (redCharacter.isGrounded ? 1 : characterControls.airControl);
-                    
-                    // Rotate movement direction to match character rotation
-                    const rotatedDirection = moveDirection.clone();
-                    rotatedDirection.applyAxisAngle(new THREE.Vector3(0, 1, 0), redCharacter.rotation);
-                    
-                    redCharacter.velocity.x = rotatedDirection.x * speed;
-                    redCharacter.velocity.z = rotatedDirection.z * speed;
-                } else {
-                    redCharacter.velocity.x *= characterControls.friction;
-                    redCharacter.velocity.z *= characterControls.friction;
-                }
+                // Start chatting
+                simulationState.chatting = true;
+                simulationState.chattingDuration = 5 + Math.random() * 5; // 5-10 seconds
+                simulationState.chattingTimer = 0;
                 
-                // Apply gravity and ground constraints
-                if (!redCharacter.isGrounded) {
-                    redCharacter.velocity.y -= characterControls.gravity;
-                } else if (!redCharacter.isJumping) {
-                    redCharacter.velocity.y = 0;
-                }
+                // Show interaction started
+                const indicator = document.getElementById('interaction-indicator');
+                indicator.textContent = "Conversation Started";
+                indicator.style.opacity = 1;
                 
-                // Set appropriate animation based on character state
-                if (!redCharacter.isGrounded && redCharacter.velocity.y < 0) {
-                    setRedAnimation('FALL');
-                } else if (redCharacter.isJumping) {
-                    setRedAnimation('JUMP');
-                } else if (redCharacter.isMoving) {
-                    if (redCharacter.isSprinting && redCharacter.animations['RUN']) {
-                        setRedAnimation('RUN');
-                    } else if (redCharacter.animations['WALK']) {
-                        setRedAnimation('WALK');
-                    } else if (redCharacter.animations['RUN']) {
-                        setRedAnimation('RUN');
-                    }
-                } else if (redCharacter.isLookingAround && redCharacter.animations['IDLE_LOOK']) {
-                    setRedAnimation('IDLE_LOOK');
-                } else {
-                    setRedAnimation('IDLE');
-                }
+                setTimeout(() => {
+                    indicator.style.opacity = 0;
+                }, 2000);
                 
-                // Calculate new position with velocity
-                const newPosition = redCharacter.position.clone().add(redCharacter.velocity);
+                // Generate chat messages
+                setTimeout(() => {
+                    generateChatMessage('blue', 'red');
+                    
+                    // Red responds after a short delay
+                    setTimeout(() => {
+                        generateChatMessage('red', 'blue');
+                    }, 2000);
+                }, 500);
+            }
+            
+            // Update chat bubble positions
+            if (blueCharacter.isLoaded && blueCharacter.model) {
+                const blueWorldPos = new THREE.Vector3();
+                blueCharacter.model.getWorldPosition(blueWorldPos);
                 
-                // Check for boundary collisions before applying movement
-                if (!checkBoundaryCollision(newPosition)) {
-                    // No collision, apply movement
-                    redCharacter.position.copy(newPosition);
-                    redHitWall = false;
-                } else {
-                    // Collision detected, stop movement in that direction
-                    redHitWall = true;
-                    
-                    // Try moving only in X direction
-                    const newPositionX = redCharacter.position.clone();
-                    newPositionX.x += redCharacter.velocity.x;
-                    
-                    if (!checkBoundaryCollision(newPositionX)) {
-                        redCharacter.position.x = newPositionX.x;
-                    }
-                    
-                    // Try moving only in Z direction
-                    const newPositionZ = redCharacter.position.clone();
-                    newPositionZ.z += redCharacter.velocity.z;
-                    
-                    if (!checkBoundaryCollision(newPositionZ)) {
-                        redCharacter.position.z = newPositionZ.z;
-                    }
-                    
-                    // Reset velocity in directions that had collisions
-                    if (redCharacter.position.x !== newPosition.x) {
-                        redCharacter.velocity.x = 0;
-                    }
-                    if (redCharacter.position.z !== newPosition.z) {
-                        redCharacter.velocity.z = 0;
-                    }
-                }
+                const blueScreenPos = blueWorldPos.clone();
+                blueScreenPos.project(camera);
                 
-                // Update model position
-                if (redCharacter.model) {
-                    redCharacter.model.position.copy(redCharacter.position);
-                }
+                const blueX = (blueScreenPos.x * 0.5 + 0.5) * window.innerWidth;
+                const blueY = (-(blueScreenPos.y * 0.5) + 0.5) * window.innerHeight;
                 
-                // Check if current instruction is complete
-                if (redInstructionTimer >= currentInstruction.duration) {
-                    redCharacter.actionHistory.push({
-                        action: currentInstruction.action,
-                        thought: currentInstruction.thought,
-                        position: {
-                            x: redCharacter.position.x,
-                            y: redCharacter.position.y,
-                            z: redCharacter.position.z
-                        },
-                        grid: getGridPosition(redCharacter.position)
-                    });
-                    
-                    redInstructionTimer = 0;
-                    redInstructionIndex++;
-                    
-                    // Get new instruction when current one is complete
-                    if (redInstructionIndex >= redAIInstructions.length) {
-                        isLoadingRedInstructions = true;
-                        document.getElementById('enemy-ai-thinking').textContent = "Planning next action...";
-                        
-                        getRedAIInstructions(
-                            redCharacter.position, 
-                            redCharacter.actionHistory,
-                            redHitWall,
-                            blueCharacter.position
-                        ).then(instructions => {
-                            redAIInstructions = instructions;
-                            redInstructionIndex = 0;
-                            redInstructionTimer = 0;
-                            isLoadingRedInstructions = false;
-                        }).catch(error => {
-                            console.error("Error getting new red AI instructions:", error);
-                            isLoadingRedInstructions = false;
-                            document.getElementById('enemy-ai-thinking').textContent = "Error planning. Using fallback behavior.";
-                            redAIInstructions = [
-                                { action: 'idle', duration: 2, thought: 'Thinking what to do next' }
-                            ];
-                            redInstructionIndex = 0;
-                        });
-                    }
-                }
+                blueCharacter.chatBubble.style.left = `${blueX}px`;
+                blueCharacter.chatBubble.style.top = `${blueY - 100}px`;
+            }
+            
+            if (redCharacter.isLoaded && redCharacter.model) {
+                const redWorldPos = new THREE.Vector3();
+                redCharacter.model.getWorldPosition(redWorldPos);
+                
+                const redScreenPos = redWorldPos.clone();
+                redScreenPos.project(camera);
+                
+                const redX = (redScreenPos.x * 0.5 + 0.5) * window.innerWidth;
+                const redY = (-(redScreenPos.y * 0.5) + 0.5) * window.innerHeight;
+                
+                redCharacter.chatBubble.style.left = `${redX}px`;
+                redCharacter.chatBubble.style.top = `${redY - 100}px`;
             }
         }
 
         // Animation loop
         const clock = new THREE.Clock();
-        let lastTime = 0;
         
         function animate() {
             requestAnimationFrame(animate);
             
-            const currentTime = clock.getElapsedTime();
-            const delta = Math.min(currentTime - lastTime, 0.1);
-            lastTime = currentTime;
+            const deltaTime = Math.min(clock.getDelta(), 0.1);
             
-            // Update orbit controls if enabled
+            // Update orbit controls
             orbitControls.update();
             
-            // Update character animation mixers
+            // Update character animations
             if (blueCharacter.mixer) {
-                blueCharacter.mixer.update(delta);
+                blueCharacter.mixer.update(deltaTime);
             }
             
             if (redCharacter.mixer) {
-                redCharacter.mixer.update(delta);
+                redCharacter.mixer.update(deltaTime);
             }
             
-            // Process character movements
-            processBlueCharacterMovement(delta);
-            processRedCharacterMovement(delta);
-            
-            // Check for tag collision
-            if (checkTagCollision()) {
-                handleTag();
+            // Process character movement if simulation is active
+            if (simulationState.isActive) {
+                // Process blue character movement
+                processBlueCharacterMovement(deltaTime);
+                
+                // Process red character movement
+                processRedCharacterMovement(deltaTime);
+                
+                // Update character positions
+                if (blueCharacter.isLoaded) {
+                    // Apply gravity
+                    blueCharacter.velocity.y -= characterControls.gravity;
+                    
+                    // Update position
+                    blueCharacter.position.x += blueCharacter.velocity.x;
+                    blueCharacter.position.y += blueCharacter.velocity.y;
+                    blueCharacter.position.z += blueCharacter.velocity.z;
+                    
+                    // Check boundary collision
+                    const boundedPosition = checkBoundaryCollision(blueCharacter.position);
+                    
+                    // Check if we hit a wall
+                    if (boundedPosition.x !== blueCharacter.position.x || 
+                        boundedPosition.z !== blueCharacter.position.z) {
+                        blueHitWall = true;
+                    }
+                    
+                    // Apply bounded position
+                    blueCharacter.position.x = boundedPosition.x;
+                    blueCharacter.position.z = boundedPosition.z;
+                    
+                    // Check if grounded
+                    blueCharacter.isGrounded = isGrounded(blueCharacter);
+                    
+                    if (blueCharacter.isGrounded && blueCharacter.velocity.y < 0) {
+                        blueCharacter.velocity.y = 0;
+                        blueCharacter.position.y = 1; // Reset to ground level
+                        blueCharacter.isJumping = false;
+                    }
+                    
+                    // Apply damping
+                    blueCharacter.velocity.x *= characterControls.linearDamping;
+                    blueCharacter.velocity.z *= characterControls.linearDamping;
+                    
+                    // Update model position
+                    if (blueCharacter.model) {
+                        blueCharacter.model.position.copy(blueCharacter.position);
+                        
+                        // Smooth rotation
+                        const rotDiff = blueCharacter.targetRotation - blueCharacter.rotation;
+                        blueCharacter.rotation += rotDiff * characterControls.rotationSpeed;
+                        blueCharacter.model.rotation.y = blueCharacter.rotation;
+                    }
+                }
+                
+                if (redCharacter.isLoaded) {
+                    // Apply gravity
+                    redCharacter.velocity.y -= characterControls.gravity;
+                    
+                    // Update position
+                    redCharacter.position.x += redCharacter.velocity.x;
+                    redCharacter.position.y += redCharacter.velocity.y;
+                    redCharacter.position.z += redCharacter.velocity.z;
+                    
+                    // Check boundary collision
+                    const boundedPosition = checkBoundaryCollision(redCharacter.position);
+                    
+                    // Check if we hit a wall
+                    if (boundedPosition.x !== redCharacter.position.x || 
+                        boundedPosition.z !== redCharacter.position.z) {
+                        redHitWall = true;
+                    }
+                    
+                    // Apply bounded position
+                    redCharacter.position.x = boundedPosition.x;
+                    redCharacter.position.z = boundedPosition.z;
+                    
+                    // Check if grounded
+                    redCharacter.isGrounded = isGrounded(redCharacter);
+                    
+                    if (redCharacter.isGrounded && redCharacter.velocity.y < 0) {
+                        redCharacter.velocity.y = 0;
+                        redCharacter.position.y = 1; // Reset to ground level
+                        redCharacter.isJumping = false;
+                    }
+                    
+                    // Apply damping
+                    redCharacter.velocity.x *= characterControls.linearDamping;
+                    redCharacter.velocity.z *= characterControls.linearDamping;
+                    
+                    // Update model position
+                    if (redCharacter.model) {
+                        redCharacter.model.position.copy(redCharacter.position);
+                        
+                        // Smooth rotation
+                        const rotDiff = redCharacter.targetRotation - redCharacter.rotation;
+                        redCharacter.rotation += rotDiff * characterControls.rotationSpeed;
+                        redCharacter.model.rotation.y = redCharacter.rotation;
+                    }
+                }
+                
+                // Handle character interaction
+                handleInteraction();
+                
+                // Update chatting state
+                updateChattingState(deltaTime);
             }
             
+            // Render the scene
             renderer.render(scene, camera);
         }
         
-        function formatActionName(action) {
-            if (!action) return "Unknown";
-            return action
-                .replace(/([A-Z])/g, ' $1')
-                .replace(/^./, str => str.toUpperCase());
-        }
-        
         animate();
+
+        // Handle window resize
+        window.addEventListener('resize', function() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Start button click handler
+        document.getElementById('load-models-btn').addEventListener('click', async function() {
+            if (!blueModelLoaded || !redModelLoaded) {
+                alert('Please wait for both character models to load.');
+                return;
+            }
+            
+            // Check if models are available on the server
+            try {
+                const blueModelId = document.getElementById('model-1-choice').value;
+                const redModelId = document.getElementById('model-2-choice').value;
+                
+                document.getElementById('model-status').textContent = "Checking model availability...";
+                
+                // Check blue model
+                const blueResponse = await fetch(`${PYTHON_SERVER_URL}/check-model`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        model_id: blueModelId
+                    })
+                });
+                
+                const blueData = await blueResponse.json();
+                
+                if (!blueData.available) {
+                    alert(`Blue character model "${blueModelId}" is not available on the server.`);
+                    document.getElementById('model-status').textContent = "Model check failed. Please try again.";
+                    return;
+                }
+                
+                // Check red model
+                const redResponse = await fetch(`${PYTHON_SERVER_URL}/check-model`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        model_id: redModelId
+                    })
+                });
+                
+                const redData = await redResponse.json();
+                
+                if (!redData.available) {
+                    alert(`Red character model "${redModelId}" is not available on the server.`);
+                    document.getElementById('model-status').textContent = "Model check failed. Please try again.";
+                    return;
+                }
+                
+                // Start the simulation
+                simulationState.isActive = true;
+                document.getElementById('model-status').textContent = "Simulation active";
+                document.getElementById('load-models-btn').disabled = true;
+                
+                // Show start message
+                const indicator = document.getElementById('interaction-indicator');
+                indicator.textContent = "Simulation Started";
+                indicator.style.opacity = 1;
+                
+                setTimeout(() => {
+                    indicator.style.opacity = 0;
+                }, 2000);
+                
+            } catch (error) {
+                console.error('Error checking model availability:', error);
+                document.getElementById('model-status').textContent = "Error connecting to server. Please try again.";
+                alert('Error connecting to the Python server. Make sure it is running at ' + PYTHON_SERVER_URL);
+            }
+        });
+
+        // Instructions for running the simulation
+        console.log(`
+            AI Social Simulation
+            -------------------
+            1. Start the Python server with 'python server.py'
+            2. Open this HTML file in a browser
+            3. Select the models for Blue and Red characters
+            4. Click 'Start Simulation' to begin
+            
+            The characters will explore the environment and interact with each other.
+            Chat messages will appear in bubbles above their heads.
+        `);
     </script>
 </body>
 </html>
