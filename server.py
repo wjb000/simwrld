@@ -5,6 +5,7 @@ import sys
 import os
 import re
 import logging
+import random
 from llama_cpp import Llama
 
 # Configure logging
@@ -41,11 +42,13 @@ def load_model(model_id):
             
         logger.info(f"Model path: {model_path}")
         
-        # Load the model with llama-cpp-python
+        # Load the model with llama-cpp-python with improved parameters
         model = Llama(
             model_path=model_path,
-            n_ctx=2048,  # Context window size
-            n_threads=4   # Number of CPU threads to use
+            n_ctx=2048,      # Context window size
+            n_threads=4,     # Number of CPU threads to use
+            n_batch=512,     # Batch size for prompt processing
+            f16_kv=True      # Use half-precision for key/value cache
         )
         
         models[model_id] = model
@@ -59,24 +62,56 @@ def extract_json_from_text(text):
     """Extract JSON object from text, or create a fallback JSON if none is found"""
     logger.info(f"Extracting JSON from: {text}")
     
-    # Try to find JSON pattern in the text
-    json_match = re.search(r'(\{[\s\S]*\})', text)
+    # Try to find JSON pattern in the text (more robust pattern)
+    json_match = re.search(r'(\{[\s\S]*?\})', text)
     
     if json_match:
         try:
             # Try to parse the extracted JSON
-            json_obj = json.loads(json_match.group(1))
+            json_str = json_match.group(1)
+            # Clean up the JSON string (remove any trailing text)
+            json_str = re.sub(r',\s*}', '}', json_str)
+            json_obj = json.loads(json_str)
             logger.info(f"Successfully extracted JSON: {json_obj}")
             return json_obj
         except json.JSONDecodeError as e:
             logger.warning(f"JSON decode error: {e}")
+            logger.warning(f"Problematic JSON string: {json_match.group(1)}")
     
     # If no valid JSON found, create a fallback
     logger.warning("No valid JSON found, using fallback")
+    return get_fallback_action(text)
+
+def get_fallback_action(text=None):
+    """Generate a fallback action, potentially using text hints if available"""
+    actions = ["moveForward", "moveBackward", "moveLeft", "moveRight", "jump", "sprint", "idle", "explore", "lookAround"]
+    thoughts = [
+        "Exploring the environment",
+        "Taking in the surroundings",
+        "Moving to see what's ahead",
+        "Checking out this area",
+        "Wandering around to find something interesting",
+        "Looking for the wooden platform",
+        "Searching for interesting features"
+    ]
+    
+    # Try to extract hints from the text if available
+    if text:
+        # Check for action hints in the text
+        for action in actions:
+            if action.lower() in text.lower():
+                # Found an action mentioned in the text
+                return {
+                    "action": action,
+                    "duration": round(random.uniform(1.5, 3.0), 1),
+                    "thought": "Trying to " + action.lower().replace("move", "move ")
+                }
+    
+    # Default fallback with random selection
     return {
-        "action": "explore",
-        "duration": 2.5,
-        "thought": "Starting to explore the environment"
+        "action": random.choice(actions),
+        "duration": round(random.uniform(1.5, 3.0), 1),
+        "thought": random.choice(thoughts)
     }
 
 # Add a route handler for the root path
@@ -115,9 +150,8 @@ def root_endpoint():
         return jsonify({"error": f"Failed to load model {model_id}"}), 500
     
     try:
-        # Create a simplified prompt that focuses on coordinates and wall collisions
-        # Use a more direct prompt that's easier for the model to respond to
-        simplified_prompt = f"""You are controlling a 3D character in a virtual environment. Generate the next action for the character.
+        # Create a prompt using Mistral's instruction format
+        simplified_prompt = f"""<s>[INST] You are controlling a 3D character in a virtual environment. Generate the next action for the character.
 
 Current position: X:{position.get('x', 0):.1f}, Y:{position.get('y', 0):.1f}, Z:{position.get('z', 0):.1f}
 Environment: Open field with walls at x=±50 and z=±50
@@ -127,23 +161,27 @@ Choose ONE action from: moveForward, moveBackward, moveLeft, moveRight, jump, sp
 Choose a duration between 0.5 and 4 seconds
 Include a brief thought describing the character's intention
 
-Format your response EXACTLY like this JSON:
+Your response must be a valid JSON object with exactly this format:
 {{"action": "moveForward", "duration": 2.5, "thought": "Exploring the open field"}}
 
-Previous actions: {json.dumps(previous_actions[-3:] if previous_actions else [])}"""
+Previous actions: {json.dumps(previous_actions[-3:] if previous_actions else [])} [/INST]"""
 
         logger.info("Sending prompt to model:")
         logger.info("-" * 40)
         logger.info(simplified_prompt)
         logger.info("-" * 40)
         
-        # Generate response using llama-cpp with higher temperature for more creativity
+        # Generate response using llama-cpp with optimized parameters
         response = model.create_completion(
             prompt=simplified_prompt,
-            max_tokens=256,
-            temperature=0.8,
-            top_p=0.95,
-            stop=["</s>", "\n\n"],
+            max_tokens=512,        # Increased max tokens
+            temperature=0.7,       # Balanced temperature
+            top_p=0.9,             # Nucleus sampling
+            top_k=40,              # Limit vocabulary to top 40 tokens
+            repeat_penalty=1.1,    # Penalize repetition
+            presence_penalty=0.1,  # Encourage new tokens
+            frequency_penalty=0.1, # Discourage frequent tokens
+            stop=["</s>", "\n\n", "[INST]"],
             echo=False
         )
         
@@ -171,12 +209,13 @@ Previous actions: {json.dumps(previous_actions[-3:] if previous_actions else [])
                 action = "sprint"
                 thought = "Moving quickly to cover more ground"
             else:
-                action = "explore"
+                # Use a more varied approach for subsequent actions
+                action = random.choice(["moveForward", "moveLeft", "moveRight", "explore", "sprint"])
                 thought = "Continuing to explore the area"
                 
             json_response = {
                 "action": action,
-                "duration": 2.0,
+                "duration": round(random.uniform(1.5, 3.0), 1),
                 "thought": thought
             }
         else:
@@ -206,18 +245,16 @@ Previous actions: {json.dumps(previous_actions[-3:] if previous_actions else [])
             logger.warning(f"Invalid duration '{json_response['duration']}', using fallback")
             json_response["duration"] = 2.0
         
-        # Convert to JSON string
-        json_string = json.dumps(json_response)
-        logger.info(f"Final response: {json_string}")
+        logger.info(f"Final response: {json_response}")
             
-        # Return the JSON string directly
-        return jsonify({"response": json_string})
+        # Return the JSON response directly
+        return jsonify(json_response)
     
     except Exception as e:
         logger.error(f"Error generating response: {e}", exc_info=True)
         # Return a fallback response on error
-        fallback = {"action": "explore", "duration": 2.0, "thought": "Exploring the environment"}
-        return jsonify({"response": json.dumps(fallback)}), 200
+        fallback = get_fallback_action()
+        return jsonify(fallback), 200
 
 @app.route('/generate', methods=['POST'])
 def generate_text():
@@ -244,11 +281,14 @@ def generate_text():
         logger.info(prompt)
         logger.info("-" * 40)
         
-        # Generate response using llama-cpp
+        # Generate response using llama-cpp with improved parameters
         response = model.create_completion(
             prompt=prompt,
-            max_tokens=256,
+            max_tokens=512,
             temperature=0.7,
+            top_p=0.9,
+            top_k=40,
+            repeat_penalty=1.1,
             stop=["</s>", "\n\n"],
             echo=False
         )
@@ -267,7 +307,6 @@ def generate_text():
         logger.error(f"Error generating response: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
-# Fix: Change the route to match what the client is expecting
 @app.route('/check-model', methods=['POST'])
 def check_model():
     """Check if a model can be loaded"""
