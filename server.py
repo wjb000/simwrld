@@ -161,6 +161,7 @@ Choose ONE action from: moveForward, moveBackward, moveLeft, moveRight, jump, sp
 Choose a duration between 0.5 and 4 seconds
 Include a brief thought describing the character's intention
 
+
 Your response must be a valid JSON object with exactly this format:
 {{"action": "moveForward", "duration": 2.5, "thought": "Exploring the open field"}}
 
