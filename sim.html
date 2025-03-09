@@ -108,6 +108,29 @@
             background: #555;
             cursor: not-allowed;
         }
+        #text-map-container {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 12px;
+            width: auto;
+            height: auto;
+            display: inline-block;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        }
+        #text-map {
+            font-family: 'Courier New', monospace;
+            white-space: pre;
+            margin: 0;
+            line-height: 1.2;
+            font-weight: bold;
+            letter-spacing: 0.05em;
+            text-shadow: 0 0 2px rgba(255,255,255,0.3);
+        }
     </style>
 </head>
 <body>
@@ -123,6 +146,7 @@
         <h2>Model Selection</h2>
         <select id="model-choice">
             <option value="mistral7b.gguf">Mistral 7B</option>
+            <option value="Llama-3-8B.gguf">llama3 8B</option>
         </select>
         <button id="load-model-btn">Load Model</button>
         <div id="model-status">No model loaded</div>
@@ -132,6 +156,11 @@
         Environment: Grassy Field with Platform<br>
         Time: Day<br>
         Weather: Clear
+    </div>
+
+    <div id="text-map-container">
+        <h2>AI's Map View</h2>
+        <pre id="text-map"></pre>
     </div>
 
     <script type="importmap">
@@ -151,35 +180,170 @@
         // Python server endpoint for model inference
         const PYTHON_SERVER_URL = 'http://localhost:5000';
 
+// Function to generate a text-based grid map with enhanced information
+function generateTextMap(characterPosition) {
+    const gridSize = 9; // Smaller 9x9 grid centered on character
+    const cellSize = 10; // Each cell represents 10x10 units in the 3D world
+    
+    // Calculate grid boundaries
+    const centerX = Math.floor(characterPosition.x / cellSize);
+    const centerZ = Math.floor(characterPosition.z / cellSize);
+    const startX = centerX - Math.floor(gridSize / 2);
+    const startZ = centerZ - Math.floor(gridSize / 2);
+    
+    // Get character's facing direction
+    const facingAngle = character.rotation;
+    let directionSymbol = "^"; // Default north - using simpler symbols
+    let directionName = "North";
+    
+    // Convert rotation angle to cardinal direction symbol
+    if (facingAngle >= -Math.PI/4 && facingAngle < Math.PI/4) {
+        directionSymbol = "^"; // North
+        directionName = "North";
+    } else if (facingAngle >= Math.PI/4 && facingAngle < 3*Math.PI/4) {
+        directionSymbol = ">"; // East
+        directionName = "East";
+    } else if (facingAngle >= 3*Math.PI/4 || facingAngle < -3*Math.PI/4) {
+        directionSymbol = "v"; // South
+        directionName = "South";
+    } else if (facingAngle >= -3*Math.PI/4 && facingAngle < -Math.PI/4) {
+        directionSymbol = "<"; // West
+        directionName = "West";
+    }
+    
+    let textMap = "";
+    
+    // Add simple header with position and facing direction
+    textMap += `POSITION: X:${Math.round(characterPosition.x)}, Z:${Math.round(characterPosition.z)} | FACING: ${directionName}\n\n`;
+    
+    // Generate the grid with simpler ASCII characters
+    textMap += "+";
+    for (let x = 0; x < gridSize; x++) {
+        textMap += "---+";
+    }
+    textMap += "\n";
+    
+    // Generate the grid
+    for (let z = 0; z < gridSize; z++) {
+        const worldZ = (startZ + z) * cellSize;
+        textMap += "|";
+        
+        for (let x = 0; x < gridSize; x++) {
+            const worldX = (startX + x) * cellSize;
+            
+            // Determine what's at this grid cell
+            let cellChar = " ";
+            
+            // Check if this is the character's position
+            if (Math.floor(characterPosition.x / cellSize) === startX + x && 
+                Math.floor(characterPosition.z / cellSize) === startZ + z) {
+                cellChar = directionSymbol; // Use direction symbol
+            }
+            // Check if this is the platform position (at x=10, z=10)
+            else if (worldX >= 5 && worldX <= 15 && worldZ >= 5 && worldZ <= 15) {
+                cellChar = "P"; // Platform (using P instead of □)
+            }
+            // Check if this is a wall
+            else if (worldX <= -50 || worldX >= 50 || worldZ <= -50 || worldZ >= 50) {
+                cellChar = "#"; // Wall
+            }
+            // Simplified environment features with fixed positions instead of random
+            else if ((Math.abs(worldX) % 20 < 5) && (Math.abs(worldZ) % 20 < 5)) {
+                cellChar = "T"; // Tree
+            }
+            else if ((Math.abs(worldX) % 15 < 3) && (Math.abs(worldZ) % 15 < 3)) {
+                cellChar = "R"; // Rock
+            }
+            
+            textMap += " " + cellChar + " |";
+        }
+        textMap += "\n+";
+        
+        // Add row separators
+        for (let x = 0; x < gridSize; x++) {
+            textMap += "---+";
+        }
+        textMap += "\n";
+    }
+    
+    // Add simple compass
+    textMap += "\n  N  \n";
+    textMap += "W + E\n";
+    textMap += "  S  \n";
+    
+    // Add simple legend
+    textMap += "\nLegend:\n";
+    textMap += `${directionSymbol} = You (facing ${directionName})\n`;
+    textMap += "P = Platform (at coordinates 10,10)\n";
+    textMap += "# = Wall (boundary at ±50)\n";
+    textMap += "T = Tree\n";
+    textMap += "R = Rock\n";
+    textMap += "  = Open Space\n";
+    
+    // Add goal information
+    textMap += "\nGOAL: Go to the platform at (10,10)\n";
+    
+    // Add distance to platform
+    const distToPlatform = Math.round(Math.sqrt(
+        Math.pow(characterPosition.x - 10, 2) + 
+        Math.pow(characterPosition.z - 10, 2)
+    ));
+    
+    textMap += `Distance to platform: ${distToPlatform} units\n`;
+    
+    // Add simple direction to platform
+    const angleToPlatform = Math.atan2(10 - characterPosition.z, 10 - characterPosition.x);
+    let platformDirection = "";
+    
+    if (angleToPlatform >= -Math.PI/4 && angleToPlatform < Math.PI/4) {
+        platformDirection = "East";
+    } else if (angleToPlatform >= Math.PI/4 && angleToPlatform < 3*Math.PI/4) {
+        platformDirection = "North";
+    } else if (angleToPlatform >= 3*Math.PI/4 || angleToPlatform < -3*Math.PI/4) {
+        platformDirection = "West";
+    } else if (angleToPlatform >= -3*Math.PI/4 && angleToPlatform < -Math.PI/4) {
+        platformDirection = "South";
+    }
+    
+    textMap += `Platform is to the ${platformDirection} of you\n`;
+    
+    return textMap;
+}
+
         // AI Movement Control with local model inference
-// AI Movement Control with local model inference
-async function getAIMovementInstructions(currentPosition, previousActions = [], hitWall = false) {
-    try {
-        const statusElement = document.getElementById('ai-thinking');
-        statusElement.textContent = "AI is thinking about what to do next...";
-        
-        const modelChoice = document.getElementById('model-choice').value;
-        
-        // Send request to local Python server
-        const response = await fetch(PYTHON_SERVER_URL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                model_id: modelChoice,
-                position: {
-                    x: currentPosition.x,
-                    y: currentPosition.y,
-                    z: currentPosition.z
-                },
-                hit_wall: hitWall,
-                previous_actions: previousActions.slice(-3),
-                prompt: `You are an AI controlling a 3D character in a virtual environment with a grassy field and a wooden platform at (10, 0.5, 10). You decide what the character does next based on its current state and surroundings. The environment has walls at the boundaries (±50 on x and z axes).
+        async function getAIMovementInstructions(currentPosition, previousActions = [], hitWall = false) {
+            try {
+                const statusElement = document.getElementById('ai-thinking');
+                statusElement.textContent = "AI is thinking about what to do next...";
+                
+                const modelChoice = document.getElementById('model-choice').value;
+                
+                // Generate the text-based map
+                const textMap = generateTextMap(currentPosition);
+                
+                // Send request to local Python server
+                const response = await fetch(PYTHON_SERVER_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        model_id: modelChoice,
+                        position: {
+                            x: currentPosition.x,
+                            y: currentPosition.y,
+                            z: currentPosition.z
+                        },
+                        hit_wall: hitWall,
+                        previous_actions: previousActions.slice(-3),
+                        prompt: `You are an AI controlling a 3D character in a virtual environment with a grassy field and a wooden platform at (10, 0.5, 10). You decide what the character does next based on its current state and surroundings. The environment has walls at the boundaries (±50 on x and z axes).
 
 The character is at position (${currentPosition.x.toFixed(1)}, ${currentPosition.y.toFixed(1)}, ${currentPosition.z.toFixed(1)}) in a grassy field with a wooden platform at (10, 0.5, 10). The environment has walls at x=±50 and z=±50.
 ${hitWall ? 'The character just hit a wall.' : ''}
-                
+
+Here is a text-based map of the surrounding area (P = Player, □ = Platform, # = Wall):
+${textMap}
+                        
 Generate ONE natural, lifelike movement for the character to perform next. Return ONLY valid JSON with a single object containing:
 - "action": one of [moveForward, moveBackward, moveLeft, moveRight, jump, sprint, idle, explore, lookAround]
 - "duration": time in seconds (between 0.5 and 4)
@@ -188,27 +352,27 @@ Generate ONE natural, lifelike movement for the character to perform next. Retur
 Create an action that would make sense for a character exploring this environment, possibly interacting with the platform. Make the movement feel natural and purposeful. Avoid actions that would cause the character to hit walls or fall off edges.
 
 Previous actions: ${JSON.stringify(previousActions.slice(-3))}`
-            })
-        });
-        
-        // Get the response data
-        const data = await response.json();
-        
-        console.log('AI Response:', data);
-        statusElement.textContent = "";
-        
-        // The server now returns the instruction directly as a JSON object
-        // Wrap it in an array for compatibility with existing code
-        return [data];
-    } catch (error) {
-        console.error('Error fetching AI instructions:', error);
-        document.getElementById('ai-thinking').textContent = "AI connection error. Using fallback behavior.";
-        
-        return [
-            { action: 'idle', duration: 2, thought: 'Taking in the surroundings' }
-        ];
-    }
-}
+                    })
+                });
+                
+                // Get the response data
+                const data = await response.json();
+                
+                console.log('AI Response:', data);
+                statusElement.textContent = "";
+                
+                // The server now returns the instruction directly as a JSON object
+                // Wrap it in an array for compatibility with existing code
+                return [data];
+            } catch (error) {
+                console.error('Error fetching AI instructions:', error);
+                document.getElementById('ai-thinking').textContent = "AI connection error. Using fallback behavior.";
+                
+                return [
+                    { action: 'idle', duration: 2, thought: 'Taking in the surroundings' }
+                ];
+            }
+        }
 
         // Scene setup with enhanced environment
         const scene = new THREE.Scene();
@@ -950,6 +1114,12 @@ Previous actions: ${JSON.stringify(previousActions.slice(-3))}`
             
             // Update camera position
             updateCameraPosition();
+            
+            // Update the text map display
+            if (character.isLoaded && modelLoaded) {
+                const textMap = generateTextMap(character.position);
+                document.getElementById('text-map').textContent = textMap;
+            }
             
             renderer.render(scene, camera);
         }
