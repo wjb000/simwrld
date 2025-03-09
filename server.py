@@ -7,6 +7,8 @@ import re
 import logging
 import random
 from llama_cpp import Llama
+from flask import send_from_directory
+import os.path
 
 # Configure logging
 logging.basicConfig(
@@ -114,7 +116,6 @@ def get_fallback_action(text=None):
         "thought": random.choice(thoughts)
     }
 
-# Add a route handler for the root path
 @app.route('/', methods=['POST', 'OPTIONS'])
 def root_endpoint():
     """Handle requests to the root endpoint"""
@@ -140,6 +141,9 @@ def root_endpoint():
     collision_info = data.get('collision_info', '')
     season = data.get('season', 'Summer')
     
+    # NEW: Extract observer messages
+    observer_message = data.get('observer_message', '')
+    
     logger.info(f"Request received - Model: {model_id}")
     logger.info(f"Character position: X:{position.get('x', 0):.1f}, Y:{position.get('y', 0):.1f}, Z:{position.get('z', 0):.1f}")
     logger.info(f"Hit wall: {hit_wall}")
@@ -147,6 +151,7 @@ def root_endpoint():
     logger.info(f"Previous actions: {previous_actions[-3:] if previous_actions else []}")
     logger.info(f"Map data length: {len(map_data) if map_data else 0} characters")
     logger.info(f"Nearby objects count: {len(nearby_objects)}")
+    logger.info(f"Observer message: {observer_message}")
     
     if not model_id or not prompt:
         logger.warning("Missing model_id or prompt")
@@ -159,31 +164,53 @@ def root_endpoint():
         return jsonify({"error": f"Failed to load model {model_id}"}), 500
     
     try:
-        # Create a prompt using Mistral's instruction format with enhanced map data
-        simplified_prompt = f"""<s>[INST] You are controlling a 3D character in a virtual wooded town environment. Generate the next action for the character based on the detailed map information provided.
-
-Current position: X:{position.get('x', 0):.1f}, Y:{position.get('y', 0):.1f}, Z:{position.get('z', 0):.1f}
-Current season: {season}
-{' The character just hit a wall or obstacle.' if hit_wall else ''}
-
-=== ENVIRONMENT MAP ===
-{map_data}
-
-=== NEARBY OBJECTS ===
-{json.dumps(nearby_objects[:5], indent=2) if nearby_objects else "No objects detected nearby."}
-
-=== COLLISION INFORMATION ===
-{collision_info}
-
-Choose ONE action from: moveForward, moveBackward, moveLeft, moveRight, jump, sprint, idle, explore, lookAround
-Choose a duration between 0.5 and 4 seconds
-Include a brief thought describing the character's intention based on what you see in the environment
-
-Your response must be a valid JSON object with exactly this format:
-{{"action": "moveForward", "duration": 2.5, "thought": "Exploring the wooded town"}}
-
-Previous actions: {json.dumps(previous_actions[-3:] if previous_actions else [])} [/INST]"""
-
+        # Build the prompt in parts to avoid f-string backslash issues
+        prompt_parts = []
+        
+        # Start with instruction tag
+        prompt_parts.append("<s>[INST] You are controlling a 3D character in a virtual wooded town environment. Generate the next action for the character based on the detailed map information provided.")
+        
+        # Add position and season info
+        prompt_parts.append(f"\nCurrent position: X:{position.get('x', 0):.1f}, Y:{position.get('y', 0):.1f}, Z:{position.get('z', 0):.1f}")
+        prompt_parts.append(f"Current season: {season}")
+        if hit_wall:
+            prompt_parts.append(" The character just hit a wall or obstacle.")
+        
+        # Add environment map
+        prompt_parts.append("\n=== ENVIRONMENT MAP ===")
+        prompt_parts.append(map_data)
+        
+        # Add nearby objects
+        prompt_parts.append("\n=== NEARBY OBJECTS ===")
+        prompt_parts.append(json.dumps(nearby_objects[:5], indent=2) if nearby_objects else "No objects detected nearby.")
+        
+        # Add collision info
+        prompt_parts.append("\n=== COLLISION INFORMATION ===")
+        prompt_parts.append(collision_info)
+        
+        # Add observer message if present
+        if observer_message:
+            prompt_parts.append("\n=== OBSERVER MESSAGE ===")
+            prompt_parts.append(observer_message)
+        
+        # Add instructions for response format
+        prompt_parts.append("\nChoose ONE action from: moveForward, moveBackward, moveLeft, moveRight, jump, sprint, idle, explore, lookAround")
+        prompt_parts.append("Choose a duration between 0.5 and 4 seconds")
+        prompt_parts.append("Include a brief thought describing the character's intention based on what you see in the environment")
+        
+        # Add JSON format example
+        prompt_parts.append("\nYour response must be a valid JSON object with exactly this format:")
+        prompt_parts.append('{"action": "moveForward", "duration": 2.5, "thought": "Exploring the wooded town"}')
+        
+        # Add previous actions
+        prompt_parts.append("\nPrevious actions: " + json.dumps(previous_actions[-3:] if previous_actions else []))
+        
+        # Add closing instruction tag
+        prompt_parts.append(" [/INST]")
+        
+        # Join all parts into a single prompt
+        simplified_prompt = "\n".join(prompt_parts)
+        
         logger.info("Sending prompt to model:")
         logger.info("-" * 40)
         logger.info(simplified_prompt[:500] + "..." if len(simplified_prompt) > 500 else simplified_prompt)
@@ -355,12 +382,57 @@ def check_model():
     logger.info(f"Model {model_id} loaded successfully")
     return jsonify({"success": True, "model_id": model_id}), 200
 
+@app.route('/observer-message', methods=['POST'])
+def add_observer_message():
+    """Add an observer message to be included in future prompts"""
+    data = request.json
+    message = data.get('message', '')
+    
+    if not message:
+        logger.warning("Empty observer message received")
+        return jsonify({"error": "Empty message"}), 400
+    
+    logger.info(f"Observer message received: {message}")
+    
+    # You could store this in a global variable or database if needed
+    # For now, we'll just acknowledge receipt
+    return jsonify({
+        "success": True,
+        "message": "Observer message received and will be included in future prompts"
+    }), 200
+
+@app.route('/music/<filename>', methods=['GET'])
+def serve_music(filename):
+    """Serve music files from the music directory"""
+    music_dir = os.path.join(os.path.dirname(__file__), 'music')
+    return send_from_directory(music_dir, filename)
+
+@app.route('/available-music', methods=['GET'])
+def list_available_music():
+    """List all available music files in the music directory"""
+    music_dir = os.path.join(os.path.dirname(__file__), 'music')
+    
+    # Create music directory if it doesn't exist
+    if not os.path.exists(music_dir):
+        os.makedirs(music_dir)
+        logger.info(f"Created music directory at {music_dir}")
+        
+    # Get all music files (mp3, wav, ogg)
+    music_files = []
+    for file in os.listdir(music_dir):
+        if file.endswith(('.mp3', '.wav', '.ogg')):
+            music_files.append(file)
+    
+    logger.info(f"Available music files: {music_files}")
+    return jsonify({"music_files": music_files})
+
 if __name__ == '__main__':
     logger.info("=" * 50)
     logger.info("Starting LLaMA model server on http://localhost:5000")
     logger.info("Available endpoints:")
     logger.info("  POST /generate - Generate text from a model")
     logger.info("  POST /check-model - Check if a model can be loaded")
+    logger.info("  POST /observer-message - Add observer message to future prompts")
     logger.info("  POST / - Root endpoint for basic requests")
     logger.info("=" * 50)
     app.run(host='0.0.0.0', port=5000, debug=True)
