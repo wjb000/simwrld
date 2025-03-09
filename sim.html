@@ -1,53 +1,61 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI-Controlled 3D Character Viewer (Local Models)</title>
     <style>
-        body { 
-            margin: 0; 
-            overflow: hidden; 
+        body {
+            margin: 0;
+            overflow: hidden;
             font-family: 'Arial', sans-serif;
         }
-        canvas { 
-            display: block; 
+
+        canvas {
+            display: block;
         }
+
         #info-panel {
             position: absolute;
             top: 10px;
             left: 10px;
-            background: rgba(0,0,0,0.7);
+            background: rgba(0, 0, 0, 0.7);
             color: white;
             padding: 15px;
             border-radius: 8px;
             max-width: 300px;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
         }
+
         h2 {
             margin-top: 0;
             margin-bottom: 10px;
             font-size: 18px;
-            border-bottom: 1px solid rgba(255,255,255,0.3);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.3);
             padding-bottom: 5px;
         }
+
         #ai-status {
             margin: 10px 0;
             font-size: 14px;
             line-height: 1.4;
         }
+
         #ai-thinking {
             font-style: italic;
             color: #aaffaa;
             margin-top: 5px;
         }
+
         #debug-info {
             margin-top: 10px;
             font-size: 12px;
             color: #aaaaaa;
-            border-top: 1px solid rgba(255,255,255,0.2);
+            border-top: 1px solid rgba(255, 255, 255, 0.2);
             padding-top: 5px;
         }
+
         .progress-bar {
             height: 6px;
             background: #333;
@@ -55,34 +63,38 @@
             margin-top: 5px;
             overflow: hidden;
         }
+
         .progress-fill {
             height: 100%;
             background: linear-gradient(to right, #4CAF50, #8BC34A);
             width: 0%;
             transition: width 0.1s linear;
         }
+
         #environment-info {
             position: absolute;
             bottom: 10px;
             right: 10px;
-            background: rgba(0,0,0,0.7);
+            background: rgba(0, 0, 0, 0.7);
             color: white;
             padding: 10px;
             border-radius: 8px;
             font-size: 12px;
             max-width: 200px;
         }
+
         #model-selector {
             position: absolute;
             top: 10px;
             right: 10px;
-            background: rgba(0,0,0,0.7);
+            background: rgba(0, 0, 0, 0.7);
             color: white;
             padding: 15px;
             border-radius: 8px;
             max-width: 300px;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
         }
+
         select {
             background: #333;
             color: white;
@@ -92,6 +104,7 @@
             width: 100%;
             margin-top: 5px;
         }
+
         button {
             background: #4CAF50;
             color: white;
@@ -101,18 +114,21 @@
             cursor: pointer;
             margin-top: 10px;
         }
+
         button:hover {
             background: #45a049;
         }
+
         button:disabled {
             background: #555;
             cursor: not-allowed;
         }
+
         #text-map-container {
             position: absolute;
             bottom: 10px;
             left: 10px;
-            background: rgba(0,0,0,0.7);
+            background: rgba(0, 0, 0, 0.7);
             color: white;
             padding: 10px;
             border-radius: 8px;
@@ -120,8 +136,9 @@
             width: auto;
             height: auto;
             display: inline-block;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
         }
+
         #text-map {
             font-family: 'Courier New', monospace;
             white-space: pre;
@@ -129,15 +146,18 @@
             line-height: 1.2;
             font-weight: bold;
             letter-spacing: 0.05em;
-            text-shadow: 0 0 2px rgba(255,255,255,0.3);
+            text-shadow: 0 0 2px rgba(255, 255, 255, 0.3);
         }
     </style>
 </head>
+
 <body>
     <div id="info-panel">
         <h2>AI-Controlled Character</h2>
         <div id="ai-status">Initializing AI system...</div>
-        <div class="progress-bar"><div id="action-progress" class="progress-fill"></div></div>
+        <div class="progress-bar">
+            <div id="action-progress" class="progress-fill"></div>
+        </div>
         <div id="ai-thinking"></div>
         <div id="debug-info"></div>
     </div>
@@ -147,6 +167,11 @@
         <select id="model-choice">
             <option value="mistral7b.gguf">Mistral 7B</option>
             <option value="Llama-3-8B.gguf">llama3 8B</option>
+            <option value="sarashina-3B.gguf">sarashina 3B</option>
+            <option value="qwen2.5-coder-3B.gguf">Qwen2.5-3B</option>
+            <option value="llama-3.2-3B-instruct.gguf">llama3.2-3B</option>
+            <option value="llama-3.2-3B-uncensored.gguf">llama3.2-3B Uncensored</option>
+            <option value="aesir-uncensored.gguf">Aesir Uncensored</option>
         </select>
         <button id="load-model-btn">Load Model</button>
         <div id="model-status">No model loaded</div>
@@ -181,526 +206,1495 @@
         const PYTHON_SERVER_URL = 'http://localhost:5000';
 
         // Scene setup with optimized infinite environment
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x87ceeb);
-scene.fog = new THREE.FogExp2(0x87ceeb, 0.01); // Increased fog density to mask distant unloading
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x001133); // Dark blue night sky
+        scene.fog = new THREE.FogExp2(0x001133, 0.01); // Increased fog density to mask distant unloading
 
-// Global materials for reuse
-const groundMaterial = new THREE.MeshStandardMaterial({ color: 0x7cfc00, roughness: 0.8, metalness: 0.1 });
-const platformMaterial = new THREE.MeshStandardMaterial({ color: 0x8b4513, roughness: 0.7, metalness: 0.2 });
-const woodMaterial = new THREE.MeshStandardMaterial({ color: 0x8b4513, roughness: 0.8, metalness: 0.1 });
-const houseMaterial = new THREE.MeshStandardMaterial({ color: 0xd3b88c, roughness: 0.7, metalness: 0.1 });
-const foliageMaterial = new THREE.MeshStandardMaterial({ color: 0x2d572c, roughness: 0.8, metalness: 0.1 });
+        // Global materials for reuse
+        const groundMaterial = new THREE.MeshStandardMaterial({ color: 0x2d4c1e, roughness: 0.8, metalness: 0.1 }); // Darker green for night
+        const platformMaterial = new THREE.MeshStandardMaterial({ color: 0x8b4513, roughness: 0.7, metalness: 0.2 });
+        const woodMaterial = new THREE.MeshStandardMaterial({ color: 0x8b4513, roughness: 0.8, metalness: 0.1 });
+        const houseMaterial = new THREE.MeshStandardMaterial({ color: 0xd3b88c, roughness: 0.7, metalness: 0.1 });
+        const foliageMaterial = new THREE.MeshStandardMaterial({ color: 0x1a3a1a, roughness: 0.8, metalness: 0.1 }); // Darker for night
+        const waterMaterial = new THREE.MeshStandardMaterial({ color: 0x0a4a6b, roughness: 0.3, metalness: 0.6 });
+        const rockMaterial = new THREE.MeshStandardMaterial({ color: 0x555555, roughness: 0.9, metalness: 0.1 });
+        const mossMaterial = new THREE.MeshStandardMaterial({ color: 0x2d572c, roughness: 0.9, metalness: 0.0 });
+        const pathMaterial = new THREE.MeshStandardMaterial({ color: 0x7a5c3d, roughness: 1.0, metalness: 0.0 });
+        const fenceMaterial = new THREE.MeshStandardMaterial({ color: 0x6b4226, roughness: 0.8, metalness: 0.1 });
+        const lilyPadMaterial = new THREE.MeshStandardMaterial({ color: 0x2d6b2d, roughness: 0.7, metalness: 0.0 });
 
-// Infinite terrain system
-const chunkSize = 50; // Smaller chunks for finer control and less overhead
-const chunksVisibleInViewDistance = 1; // Only 1 chunk around the character (9 total)
-const loadedChunks = new Map();
-const activeChunks = new Set();
-let lastChunkUpdatePosition = { x: 0, z: 0 };
-const updateThreshold = chunkSize / 2; // Update only when moving half a chunk
+        // Infinite terrain system
+        const chunkSize = 50; // Smaller chunks for finer control and less overhead
+        const chunksVisibleInViewDistance = 1; // Only 1 chunk around the character (9 total)
+        const loadedChunks = new Map();
+        const activeChunks = new Set();
+        let lastChunkUpdatePosition = { x: 0, z: 0 };
+        const updateThreshold = chunkSize / 2; // Update only when moving half a chunk
 
-// Add a minimal infinite floor (lightweight)
-const floorGeometry = new THREE.PlaneGeometry(1000, 1000); // Smaller than 10000x10000
-const floorMaterial = new THREE.MeshStandardMaterial({ 
-    color: 0x7cfc00, // Fixed green color to prevent glitching
-    roughness: 0.9, 
-    metalness: 0.1,
-    side: THREE.DoubleSide // Ensure it's visible from both sides
-});
-const floor = new THREE.Mesh(floorGeometry, floorMaterial);
-floor.rotation.x = -Math.PI / 2;
-floor.position.y = -0.01; // Slightly below ground to prevent z-fighting
-floor.receiveShadow = true;
-scene.add(floor);
-
-// Add wooden platform at (10, 0.5, 10)
-const platformGeometry = new THREE.BoxGeometry(10, 0.5, 10);
-const platform = new THREE.Mesh(platformGeometry, platformMaterial);
-platform.position.set(10, 0.25, 10);
-platform.castShadow = true;
-platform.receiveShadow = true;
-scene.add(platform);
-
-// Chunk utilities
-function getChunkKey(chunkX, chunkZ) {
-    return `${chunkX},${chunkZ}`;
-}
-
-function getChunkCoords(worldX, worldZ) {
-    return {
-        x: Math.floor(worldX / chunkSize),
-        z: Math.floor(worldZ / chunkSize)
-    };
-}
-
-// Optimized terrain chunk creation for a heavily wooded town
-function createTerrainChunk(chunkX, chunkZ) {
-    const chunkKey = getChunkKey(chunkX, chunkZ);
-    if (loadedChunks.has(chunkKey)) {
-        activeChunks.add(chunkKey);
-        return loadedChunks.get(chunkKey);
-    }
-
-    const chunkGroup = new THREE.Group();
-    chunkGroup.position.set(chunkX * chunkSize, 0, chunkZ * chunkSize);
-
-    // Simplified ground (flat for performance)
-    const groundGeometry = new THREE.PlaneGeometry(chunkSize, chunkSize, 1, 1); // Simpler geometry
-    const ground = new THREE.Mesh(groundGeometry, groundMaterial.clone()); // Clone material to avoid sharing
-    ground.rotation.x = -Math.PI / 2;
-    ground.position.y = 0; // Ensure ground is at y=0
-    ground.receiveShadow = true;
-    chunkGroup.add(ground);
-
-    // Add environment objects for a heavily wooded town
-    addEnvironmentObjects(chunkGroup, chunkX, chunkZ);
-
-    scene.add(chunkGroup);
-    loadedChunks.set(chunkKey, chunkGroup);
-    activeChunks.add(chunkKey);
-
-    return chunkGroup;
-}
-
-// Strategically place objects for a heavily wooded town
-function addEnvironmentObjects(chunkGroup, chunkX, chunkZ) {
-    const chunkSeed = Math.abs(chunkX * 10000 + chunkZ);
-    const pseudoRandom = (seed) => ((seed * 9301 + 49297) % 233280) / 233280;
-
-    const objectPositions = [];
-    
-    // Generate positions for objects - use fixed positions for more consistent placement
-    const positions = [];
-    const numPositions = 40; // More positions to try
-    
-    // Use a grid-based approach for more even distribution
-    const gridCells = 5; // 5x5 grid within each chunk
-    const cellSize = chunkSize / gridCells;
-    
-    for (let i = 0; i < gridCells; i++) {
-        for (let j = 0; j < gridCells; j++) {
-            // Add some randomness within each cell
-            const offsetX = (pseudoRandom(chunkSeed + i*100 + j) - 0.5) * cellSize * 0.8;
-            const offsetZ = (pseudoRandom(chunkSeed + i*100 + j + 50) - 0.5) * cellSize * 0.8;
-            
-            // Calculate position within chunk
-            const x = (i + 0.5) * cellSize - chunkSize/2 + offsetX;
-            const z = (j + 0.5) * cellSize - chunkSize/2 + offsetZ;
-            
-            positions.push({ 
-                x, 
-                z, 
-                seed: chunkSeed + i*100 + j 
-            });
-        }
-    }
-    
-    // Function to check if a position is too close to existing objects
-    function isTooClose(x, z, minDistance) {
-        return objectPositions.some(pos => {
-            const dx = pos.x - x;
-            const dz = pos.z - z;
-            return dx * dx + dz * dz < minDistance * minDistance;
+        // Add a minimal infinite floor (lightweight)
+        const floorGeometry = new THREE.PlaneGeometry(1000, 1000); // Smaller than 10000x10000
+        const floorMaterial = new THREE.MeshStandardMaterial({
+            color: 0x2d4c1e, // Darker green for night
+            roughness: 0.9,
+            metalness: 0.1,
+            side: THREE.DoubleSide // Ensure it's visible from both sides
         });
-    }
+        const floor = new THREE.Mesh(floorGeometry, floorMaterial);
+        floor.rotation.x = -Math.PI / 2;
+        floor.position.y = -0.01; // Slightly below ground to prevent z-fighting
+        floor.receiveShadow = true;
+        scene.add(floor);
 
-    // Function to add an object if it doesn't conflict with existing ones
-    function addObject(x, z, minDistance, createFunc, heightOffset = 0) {
-        const worldX = x + chunkX * chunkSize;
-        const worldZ = z + chunkZ * chunkSize;
+        // Add wooden platform at (10, 0.5, 10)
+        const platformGeometry = new THREE.BoxGeometry(10, 0.5, 10);
+        const platform = new THREE.Mesh(platformGeometry, platformMaterial);
+        platform.position.set(10, 0.25, 10);
+        platform.castShadow = true;
+        platform.receiveShadow = true;
+        scene.add(platform);
 
-        // Avoid platform area
-        if (worldX >= 5 && worldX <= 15 && worldZ >= 5 && worldZ <= 15) return false;
-
-        if (!isTooClose(x, z, minDistance)) {
-            const object = createFunc(pseudoRandom(chunkSeed + objectPositions.length * 31));
-            object.position.set(x, heightOffset, z);
-            chunkGroup.add(object);
-            objectPositions.push({ x, z });
-            return true;
-        }
-        return false;
-    }
-
-    // Place trees (ensure at least 5 trees per chunk for dense forest feel)
-    let treesPlaced = 0;
-    const minTrees = 5;
-    const maxTrees = 12; // More trees
-    
-    // First pass - try to place minimum number of trees
-    for (let i = 0; i < positions.length && treesPlaced < minTrees; i++) {
-        if (addObject(positions[i].x, positions[i].z, 4, createTree)) { // Reduced minimum distance
-            treesPlaced++;
-        }
-    }
-    
-    // Second pass - add more trees up to max if possible
-    for (let i = 0; i < positions.length && treesPlaced < maxTrees; i++) {
-        if (addObject(positions[i].x, positions[i].z, 4, createTree)) {
-            treesPlaced++;
-        }
-    }
-
-    // Add houses (1-2 per chunk with 40% probability)
-    if (pseudoRandom(chunkSeed) < 0.4) {
-        let housesPlaced = 0;
-        const maxHouses = 2;
-        for (let i = 0; i < positions.length && housesPlaced < maxHouses; i++) {
-            if (addObject(positions[i].x, positions[i].z, 10, createHouse)) {
-                housesPlaced++;
-            }
-        }
-    }
-
-    // Add benches (30% probability per chunk)
-    if (pseudoRandom(chunkSeed + 100) < 0.3) {
-        for (let i = 0; i < positions.length; i++) {
-            if (addObject(positions[i].x, positions[i].z, 5, createBench)) {
-                break; // Just add one bench per chunk
-            }
-        }
-    }
-}
-
-// Simplified object creation functions
-function createTree(randomSeed) {
-    const tree = new THREE.Group();
-    const trunkHeight = 1.5 + randomSeed * 1.5;
-    
-    // Create trunk
-    const trunk = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.2, 0.3, trunkHeight, 8),
-        woodMaterial.clone() // Clone material to avoid sharing
-    );
-    trunk.position.y = trunkHeight / 2;
-    trunk.castShadow = true;
-    trunk.receiveShadow = true;
-    tree.add(trunk);
-
-    // Create foliage (cone shape)
-    const foliage = new THREE.Mesh(
-        new THREE.ConeGeometry(1 + randomSeed * 0.5, 2 + randomSeed, 8),
-        foliageMaterial.clone() // Clone material to avoid sharing
-    );
-    foliage.position.y = trunkHeight + 1;
-    foliage.castShadow = true;
-    foliage.receiveShadow = true;
-    tree.add(foliage);
-
-    return tree;
-}
-
-function createHouse(randomSeed) {
-    const house = new THREE.Group();
-    const baseWidth = 3 + randomSeed * 2;
-    const baseDepth = 2 + randomSeed;
-    const baseHeight = 2;
-    
-    // Create house base
-    const base = new THREE.Mesh(
-        new THREE.BoxGeometry(baseWidth, baseHeight, baseDepth),
-        houseMaterial.clone() // Clone material to avoid sharing
-    );
-    base.position.y = baseHeight / 2;
-    base.castShadow = true;
-    base.receiveShadow = true;
-    house.add(base);
-
-    // Create roof
-    const roofHeight = 1.5;
-    const roof = new THREE.Mesh(
-        new THREE.ConeGeometry(Math.max(baseWidth, baseDepth) / 1.5, roofHeight, 4),
-        woodMaterial.clone() // Clone material to avoid sharing
-    );
-    roof.position.y = baseHeight + roofHeight / 2;
-    roof.rotation.y = Math.PI / 4;
-    roof.castShadow = true;
-    roof.receiveShadow = true;
-    house.add(roof);
-    
-    // Add a door
-    const door = new THREE.Mesh(
-        new THREE.PlaneGeometry(0.8, 1.5),
-        new THREE.MeshStandardMaterial({ color: 0x4d2926, roughness: 0.9 })
-    );
-    door.position.set(0, 0.75, baseDepth/2 + 0.01);
-    house.add(door);
-    
-    // Add windows
-    const windowMaterial = new THREE.MeshStandardMaterial({ color: 0xadd8e6, roughness: 0.3, metalness: 0.5 });
-    
-    const window1 = new THREE.Mesh(
-        new THREE.PlaneGeometry(0.6, 0.6),
-        windowMaterial
-    );
-    window1.position.set(-baseWidth/4, baseHeight/2 + 0.3, baseDepth/2 + 0.01);
-    house.add(window1);
-    
-    const window2 = new THREE.Mesh(
-        new THREE.PlaneGeometry(0.6, 0.6),
-        windowMaterial
-    );
-    window2.position.set(baseWidth/4, baseHeight/2 + 0.3, baseDepth/2 + 0.01);
-    house.add(window2);
-
-    return house;
-}
-
-function createBench() {
-    const bench = new THREE.Group();
-    
-    // Create seat
-    const seat = new THREE.Mesh(
-        new THREE.BoxGeometry(2, 0.1, 0.6),
-        woodMaterial.clone() // Clone material to avoid sharing
-    );
-    seat.position.y = 0.5;
-    seat.castShadow = true;
-    seat.receiveShadow = true;
-    bench.add(seat);
-
-    // Create backrest
-    const backrest = new THREE.Mesh(
-        new THREE.BoxGeometry(2, 0.6, 0.1),
-        woodMaterial.clone() // Clone material to avoid sharing
-    );
-    backrest.position.set(0, 0.8, -0.25);
-    backrest.castShadow = true;
-    backrest.receiveShadow = true;
-    bench.add(backrest);
-    
-    // Create legs
-    const legMaterial = woodMaterial.clone();
-    legMaterial.color.setHex(0x5d3a1a); // Darker wood for legs
-    
-    const leg1 = new THREE.Mesh(
-        new THREE.BoxGeometry(0.1, 0.5, 0.1),
-        legMaterial
-    );
-    leg1.position.set(-0.8, 0.25, 0.2);
-    bench.add(leg1);
-    
-    const leg2 = new THREE.Mesh(
-        new THREE.BoxGeometry(0.1, 0.5, 0.1),
-        legMaterial
-    );
-    leg2.position.set(0.8, 0.25, 0.2);
-    bench.add(leg2);
-    
-    const leg3 = new THREE.Mesh(
-        new THREE.BoxGeometry(0.1, 0.5, 0.1),
-        legMaterial
-    );
-    leg3.position.set(-0.8, 0.25, -0.2);
-    bench.add(leg3);
-    
-    const leg4 = new THREE.Mesh(
-        new THREE.BoxGeometry(0.1, 0.5, 0.1),
-        legMaterial
-    );
-    leg4.position.set(0.8, 0.25, -0.2);
-    bench.add(leg4);
-
-    return bench;
-}
-
-// Optimized chunk update for infinite world
-function updateVisibleChunks() {
-    if (!character?.isLoaded) return;
-
-    const { x, z } = getChunkCoords(character.position.x, character.position.z);
-    const dx = Math.abs(character.position.x - lastChunkUpdatePosition.x);
-    const dz = Math.abs(character.position.z - lastChunkUpdatePosition.z);
-
-    // Force update on first load or when moved significantly
-    const shouldUpdate = activeChunks.size === 0 || dx > updateThreshold || dz > updateThreshold;
-    
-    if (!shouldUpdate) return;
-
-    lastChunkUpdatePosition = { x: character.position.x, z: character.position.z };
-    
-    console.log("Updating chunks at", x, z);
-
-    // Load nearby chunks
-    for (let offsetX = -chunksVisibleInViewDistance; offsetX <= chunksVisibleInViewDistance; offsetX++) {
-        for (let offsetZ = -chunksVisibleInViewDistance; offsetZ <= chunksVisibleInViewDistance; offsetZ++) {
-            createTerrainChunk(x + offsetX, z + offsetZ);
-        }
-    }
-
-    // Unload distant chunks to keep scene lightweight
-    for (const [key, chunk] of loadedChunks.entries()) {
-        const [chunkX, chunkZ] = key.split(',').map(Number);
-        const distance = Math.max(Math.abs(x - chunkX), Math.abs(z - chunkZ));
-        if (distance > chunksVisibleInViewDistance + 1) {
-            scene.remove(chunk);
-            loadedChunks.delete(key);
-            activeChunks.delete(key);
-        }
-    }
-}
-// Function to generate a text-based grid map with enhanced information
-function generateTextMap(characterPosition) {
-    const gridSize = 9; // Smaller 9x9 grid centered on character
-    const cellSize = 10; // Each cell represents 10x10 units in the 3D world
-    
-    // Calculate grid boundaries
-    const centerX = Math.floor(characterPosition.x / cellSize);
-    const centerZ = Math.floor(characterPosition.z / cellSize);
-    const startX = centerX - Math.floor(gridSize / 2);
-    const startZ = centerZ - Math.floor(gridSize / 2);
-    
-    // Get character's facing direction
-    const facingAngle = character.rotation;
-    let directionSymbol = "^"; // Default north - using simpler symbols
-    let directionName = "North";
-    
-    // Convert rotation angle to cardinal direction symbol
-    if (facingAngle >= -Math.PI/4 && facingAngle < Math.PI/4) {
-        directionSymbol = "^"; // North
-        directionName = "North";
-    } else if (facingAngle >= Math.PI/4 && facingAngle < 3*Math.PI/4) {
-        directionSymbol = ">"; // East
-        directionName = "East";
-    } else if (facingAngle >= 3*Math.PI/4 || facingAngle < -3*Math.PI/4) {
-        directionSymbol = "v"; // South
-        directionName = "South";
-    } else if (facingAngle >= -3*Math.PI/4 && facingAngle < -Math.PI/4) {
-        directionSymbol = "<"; // West
-        directionName = "West";
-    }
-    
-    let textMap = "";
-    
-    // Add simple header with position and facing direction
-    textMap += `POSITION: X:${Math.round(characterPosition.x)}, Z:${Math.round(characterPosition.z)} | FACING: ${directionName}\n\n`;
-    
-    // Generate the grid with simpler ASCII characters
-    textMap += "+";
-    for (let x = 0; x < gridSize; x++) {
-        textMap += "---+";
-    }
-    textMap += "\n";
-    
-    // Generate the grid
-    for (let z = 0; z < gridSize; z++) {
-        const worldZ = (startZ + z) * cellSize;
-        textMap += "|";
+        // Replace the createNightSky function with this day-night cycle system
+function createDayNightSystem() {
+    // Create global objects for the system
+    const dayNightSystem = {
+        // Time settings
+        cycleTimeInSeconds: 300, // 5 minutes for a full day-night cycle
+        timeOfDay: 0.9, // Start at night (0 = midnight, 0.25 = sunrise, 0.5 = noon, 0.75 = sunset)
+        paused: false,
         
-        for (let x = 0; x < gridSize; x++) {
-            const worldX = (startX + x) * cellSize;
+        // Sky objects
+        stars: null,
+        moon: null,
+        sun: null,
+        moonLight: null,
+        sunLight: null,
+        
+        // Colors
+        daySkyColor: new THREE.Color(0x87ceeb), // Light blue
+        nightSkyColor: new THREE.Color(0x001133), // Dark blue
+        dayFogColor: new THREE.Color(0x87ceeb),
+        nightFogColor: new THREE.Color(0x001133),
+        
+        // Fireflies/lanterns
+        fireflies: [],
+        
+        // Initialize the system
+        initialize: function() {
+            // Create stars
+            const starsGeometry = new THREE.BufferGeometry();
+            const starsMaterial = new THREE.PointsMaterial({
+                color: 0xffffff,
+                size: 0.1,
+                sizeAttenuation: false,
+                transparent: true,
+                opacity: 0.8 // Visible at night
+            });
             
-            // Determine what's at this grid cell
-            let cellChar = " ";
+            const starsVertices = [];
+            for (let i = 0; i < 1000; i++) {
+                const x = Math.random() * 2000 - 1000;
+                const y = Math.random() * 1000 + 200;
+                const z = Math.random() * 2000 - 1000;
+                starsVertices.push(x, y, z);
+            }
             
-            // Check if this is the character's position
-            if (Math.floor(characterPosition.x / cellSize) === startX + x && 
-                Math.floor(characterPosition.z / cellSize) === startZ + z) {
-                cellChar = directionSymbol; // Use direction symbol
-            }
-            // Check if this is the platform position (at x=10, z=10)
-            else if (worldX >= 5 && worldX <= 15 && worldZ >= 5 && worldZ <= 15) {
-                cellChar = "P"; // Platform
-            }
-            // Check for environment features based on world coordinates
-            else {
-                const seed = Math.abs(worldX * 10000 + worldZ);
-                const pseudoRandom = (seed * 9301 + 49297) % 233280 / 233280;
+            starsGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starsVertices, 3));
+            this.stars = new THREE.Points(starsGeometry, starsMaterial);
+            scene.add(this.stars);
+            
+            // Create moon
+            const moonGeometry = new THREE.SphereGeometry(30, 16, 16);
+            const moonMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0xecf0f1,
+                transparent: true,
+                opacity: 0.8 // Visible at night
+            });
+            this.moon = new THREE.Mesh(moonGeometry, moonMaterial);
+            this.moon.position.set(300, 200, -500);
+            scene.add(this.moon);
+            
+            // Add a subtle glow to the moon
+            this.moonLight = new THREE.PointLight(0xecf0f1, 0.8, 1000);
+            this.moonLight.position.copy(this.moon.position);
+            scene.add(this.moonLight);
+            
+            // Create sun (initially not visible)
+            const sunGeometry = new THREE.SphereGeometry(40, 16, 16);
+            const sunMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0xffdd66,
+                transparent: true,
+                opacity: 0 // Not visible at night
+            });
+            this.sun = new THREE.Mesh(sunGeometry, sunMaterial);
+            this.sun.position.set(-300, -200, 500);
+            scene.add(this.sun);
+            
+            // Add sun light (initially dim)
+            this.sunLight = new THREE.PointLight(0xffdd66, 0, 1500);
+            this.sunLight.position.copy(this.sun.position);
+            scene.add(this.sunLight);
+            
+            // Create fireflies/lanterns
+            for (let i = 0; i < 15; i++) {
+                const light = new THREE.PointLight(0xffcc77, 0.5, 20);
+                light.position.set(
+                    (Math.random() - 0.5) * 100,
+                    0.5 + Math.random() * 2,
+                    (Math.random() - 0.5) * 100
+                );
+                scene.add(light);
                 
-                if (pseudoRandom < 0.05) {
-                    cellChar = "H"; // House
-                } else if (pseudoRandom < 0.25) {
-                    cellChar = "T"; // Tree (higher probability for wooded feel)
-                } else if (pseudoRandom < 0.30) {
-                    cellChar = "B"; // Bench
+                const baseIntensity = 0.3 + Math.random() * 0.3;
+                this.fireflies.push({
+                    light: light,
+                    baseIntensity: baseIntensity
+                });
+                
+                // Create a simple animation for the light
+                const animate = () => {
+                    light.intensity = baseIntensity * (0.8 + Math.sin(Date.now() * 0.001 + i) * 0.2);
+                    requestAnimationFrame(animate);
+                };
+                animate();
+            }
+            
+            // Set initial state based on time of day
+            this.update(0);
+        },
+        
+        // Update the system based on elapsed time
+        update: function(deltaTime) {
+            if (this.paused) return;
+            
+            // Update time of day
+            this.timeOfDay += deltaTime / this.cycleTimeInSeconds;
+            if (this.timeOfDay >= 1) this.timeOfDay -= 1;
+            
+            // Calculate sun/moon position based on time of day
+            const angle = this.timeOfDay * Math.PI * 2;
+            const height = Math.sin(angle);
+            const horizontalDistance = Math.cos(angle);
+            
+            // Update sun and moon positions
+            this.sun.position.set(
+                horizontalDistance * 300,
+                height * 200 + 200,
+                500
+            );
+            this.sunLight.position.copy(this.sun.position);
+            
+            this.moon.position.set(
+                -horizontalDistance * 300,
+                -height * 200 + 200,
+                -500
+            );
+            this.moonLight.position.copy(this.moon.position);
+            
+            // Determine if it's day or night
+            const isDay = height > 0;
+            
+            // Calculate transition factor (0 = night, 1 = day)
+            let transitionFactor;
+            if (isDay) {
+                // Day time - fade in day, fade out night
+                transitionFactor = Math.min(1, height * 4); // Faster transition near sunrise
+            } else {
+                // Night time - fade in night, fade out day
+                transitionFactor = Math.max(0, 1 + height * 4); // Faster transition near sunset
+            }
+            
+            const invertedFactor = 1 - transitionFactor;
+            
+            // Update sky color
+            const skyColor = new THREE.Color();
+            skyColor.copy(this.nightSkyColor).multiplyScalar(invertedFactor);
+            skyColor.add(this.daySkyColor.clone().multiplyScalar(transitionFactor));
+            scene.background = skyColor;
+            
+            // Update fog color
+            const fogColor = new THREE.Color();
+            fogColor.copy(this.nightFogColor).multiplyScalar(invertedFactor);
+            fogColor.add(this.dayFogColor.clone().multiplyScalar(transitionFactor));
+            scene.fog.color = fogColor;
+            
+            // Update celestial objects visibility
+            this.stars.material.opacity = Math.max(0, 0.8 - transitionFactor);
+            this.moon.material.opacity = Math.max(0, 0.8 - transitionFactor);
+            this.moonLight.intensity = Math.max(0, 0.8 - transitionFactor);
+            
+            this.sun.material.opacity = Math.max(0, transitionFactor - 0.2);
+            this.sunLight.intensity = Math.max(0, transitionFactor - 0.2) * 1.5;
+            
+            // Update fireflies intensity based on time of day
+            for (const firefly of this.fireflies) {
+                firefly.light.intensity = firefly.light.intensity * invertedFactor;
+            }
+            
+            // Update environment info panel
+            let timeDescription = "Night";
+            if (this.timeOfDay > 0.2 && this.timeOfDay < 0.3) timeDescription = "Dawn";
+            else if (this.timeOfDay >= 0.3 && this.timeOfDay < 0.7) timeDescription = "Day";
+            else if (this.timeOfDay >= 0.7 && this.timeOfDay < 0.8) timeDescription = "Dusk";
+            
+            document.getElementById('environment-info').innerHTML = 
+                'Environment: Infinite Wooded Town<br>' +
+                `Time: ${timeDescription}<br>` +
+                'Weather: Clear';
+        }
+    };
+    
+    // Initialize the system
+    dayNightSystem.initialize();
+    
+    // Return the system for external access
+    return dayNightSystem;
+}
+
+// Replace createNightSky() call with:
+const dayNightSystem = createDayNightSystem();
+
+        // Chunk utilities
+        function getChunkKey(chunkX, chunkZ) {
+            return `${chunkX},${chunkZ}`;
+        }
+
+        function getChunkCoords(worldX, worldZ) {
+            return {
+                x: Math.floor(worldX / chunkSize),
+                z: Math.floor(worldZ / chunkSize)
+            };
+        }
+
+        // Optimized terrain chunk creation for a heavily wooded town
+        function createTerrainChunk(chunkX, chunkZ) {
+            const chunkKey = getChunkKey(chunkX, chunkZ);
+            if (loadedChunks.has(chunkKey)) {
+                activeChunks.add(chunkKey);
+                return loadedChunks.get(chunkKey);
+            }
+
+            const chunkGroup = new THREE.Group();
+            chunkGroup.position.set(chunkX * chunkSize, 0, chunkZ * chunkSize);
+
+            // Simplified ground (flat for performance)
+            const groundGeometry = new THREE.PlaneGeometry(chunkSize, chunkSize, 1, 1); // Simpler geometry
+            const ground = new THREE.Mesh(groundGeometry, groundMaterial.clone()); // Clone material to avoid sharing
+            ground.rotation.x = -Math.PI / 2;
+            ground.position.y = 0; // Ensure ground is at y=0
+            ground.receiveShadow = true;
+            chunkGroup.add(ground);
+
+            // Add environment objects for a heavily wooded town
+            addEnvironmentObjects(chunkGroup, chunkX, chunkZ);
+
+            scene.add(chunkGroup);
+            loadedChunks.set(chunkKey, chunkGroup);
+            activeChunks.add(chunkKey);
+
+            return chunkGroup;
+        }
+
+        // Strategically place objects for a heavily wooded town
+        function addEnvironmentObjects(chunkGroup, chunkX, chunkZ) {
+            const chunkSeed = Math.abs(chunkX * 10000 + chunkZ);
+            const pseudoRandom = (seed) => ((seed * 9301 + 49297) % 233280) / 233280;
+
+            const objectPositions = [];
+
+            // Generate positions for objects - use fixed positions for more consistent placement
+            const positions = [];
+            const numPositions = 60; // More positions to try
+
+            // Use a grid-based approach for more even distribution
+            const gridCells = 7; // 7x7 grid within each chunk
+            const cellSize = chunkSize / gridCells;
+
+            for (let i = 0; i < gridCells; i++) {
+                for (let j = 0; j < gridCells; j++) {
+                    // Add some randomness within each cell
+                    const offsetX = (pseudoRandom(chunkSeed + i * 100 + j) - 0.5) * cellSize * 0.8;
+                    const offsetZ = (pseudoRandom(chunkSeed + i * 100 + j + 50) - 0.5) * cellSize * 0.8;
+
+                    // Calculate position within chunk
+                    const x = (i + 0.5) * cellSize - chunkSize / 2 + offsetX;
+                    const z = (j + 0.5) * cellSize - chunkSize / 2 + offsetZ;
+
+                    positions.push({
+                        x,
+                        z,
+                        seed: chunkSeed + i * 100 + j
+                    });
                 }
             }
-            
-            textMap += " " + cellChar + " |";
-        }
-        textMap += "\n+";
-        
-        for (let x = 0; x < gridSize; x++) {
-            textMap += "---+";
-        }
-        textMap += "\n";
-    }
-    
-    // Add simple compass
-    textMap += "\n  N  \n";
-    textMap += "W + E\n";
-    textMap += "  S  \n";
-    
-    // Add simple legend
-    textMap += "\nLegend:\n";
-    textMap += `${directionSymbol} = You (facing ${directionName})\n`;
-    textMap += "P = Platform (at coordinates 10,10)\n";
-    textMap += "H = House\n";
-    textMap += "T = Tree\n";
-    textMap += "B = Bench\n";
-    textMap += "  = Open Space\n";
-    
-    // Add goal information
-    textMap += "\nGOAL: Explore the infinite wooded town\n";
-    
-    // Add distance to platform
-    const distToPlatform = Math.round(Math.sqrt(
-        Math.pow(characterPosition.x - 10, 2) + 
-        Math.pow(characterPosition.z - 10, 2)
-    ));
-    
-    textMap += `Distance to platform: ${distToPlatform} units\n`;
-    
-    // Add simple direction to platform
-    const angleToPlatform = Math.atan2(10 - characterPosition.z, 10 - characterPosition.x);
-    let platformDirection = "";
-    
-    if (angleToPlatform >= -Math.PI/4 && angleToPlatform < Math.PI/4) {
-        platformDirection = "East";
-    } else if (angleToPlatform >= Math.PI/4 && angleToPlatform < 3*Math.PI/4) {
-        platformDirection = "North";
-    } else if (angleToPlatform >= 3*Math.PI/4 || angleToPlatform < -3*Math.PI/4) {
-        platformDirection = "West";
-    } else if (angleToPlatform >= -3*Math.PI/4 && angleToPlatform < -Math.PI/4) {
-        platformDirection = "South";
-    }
-    
-    textMap += `Platform is to the ${platformDirection} of you\n`;
-    
-    return textMap;
-}
 
-// AI Movement Control with local model inference
-async function getAIMovementInstructions(currentPosition, previousActions = [], hitObstacle = false) {
-    try {
-        const statusElement = document.getElementById('ai-thinking');
-        statusElement.textContent = "AI is thinking about what to do next...";
-        
-        const modelChoice = document.getElementById('model-choice').value;
-        
-        // Generate the text-based map
-        const textMap = generateTextMap(currentPosition);
-        
-        // Send request to local Python server
-        const response = await fetch(PYTHON_SERVER_URL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                model_id: modelChoice,
-                position: {
-                    x: currentPosition.x,
-                    y: currentPosition.y,
-                    z: currentPosition.z
-                },
-                hit_wall: hitObstacle,
-                previous_actions: previousActions.slice(-3),
-                prompt: `You are an AI controlling a 3D character in an infinite virtual environment resembling a heavily wooded town with trees, houses, benches, and a wooden platform at (10, 0.5, 10). You decide what the character does next based on its current state and surroundings.
+            // Function to check if a position is too close to existing objects
+            function isTooClose(x, z, minDistance) {
+                return objectPositions.some(pos => {
+                    const dx = pos.x - x;
+                    const dz = pos.z - z;
+                    return dx * dx + dz * dz < minDistance * minDistance;
+                });
+            }
 
-The character is at position (${currentPosition.x.toFixed(1)}, ${currentPosition.y.toFixed(1)}, ${currentPosition.z.toFixed(1)}) in an infinite wooded town.
-${hitObstacle ? 'The character just hit an obstacle.' : ''}
+            // Function to add an object if it doesn't conflict with existing ones
+            function addObject(x, z, minDistance, createFunc, heightOffset = 0, objectType = 'generic') {
+                const worldX = x + chunkX * chunkSize;
+                const worldZ = z + chunkZ * chunkSize;
+
+                // Avoid platform area
+                if (worldX >= 5 && worldX <= 15 && worldZ >= 5 && worldZ <= 15) return false;
+
+                if (!isTooClose(x, z, minDistance)) {
+                    const object = createFunc(pseudoRandom(chunkSeed + objectPositions.length * 31));
+                    object.position.set(x, heightOffset, z);
+                    object.userData.objectType = objectType; // Store object type for map generation
+                    chunkGroup.add(object);
+                    objectPositions.push({ x, z, type: objectType });
+                    return true;
+                }
+                return false;
+            }
+
+            // Create dirt paths (before other objects)
+            if (pseudoRandom(chunkSeed + 200) < 0.4) {
+                createDirtPath(chunkGroup, chunkSeed, objectPositions);
+            }
+
+            // Place trees (ensure at least 8 trees per chunk for dense forest feel)
+            let treesPlaced = 0;
+            const minTrees = 8;
+            const maxTrees = 15; // More trees for denser forest
+
+            // First pass - try to place minimum number of trees
+            for (let i = 0; i < positions.length && treesPlaced < minTrees; i++) {
+                if (addObject(positions[i].x, positions[i].z, 4, createTree, 0, 'tree')) { // Reduced minimum distance
+                    treesPlaced++;
+                }
+            }
+
+            // Second pass - add more trees up to max if possible
+            for (let i = 0; i < positions.length && treesPlaced < maxTrees; i++) {
+                if (addObject(positions[i].x, positions[i].z, 4, createTree, 0, 'tree')) {
+                    treesPlaced++;
+                }
+            }
+
+            // Add houses (1-2 per chunk with 30% probability)
+            if (pseudoRandom(chunkSeed) < 0.3) {
+                let housesPlaced = 0;
+                const maxHouses = 2;
+                const houseTypes = ['cabin', 'cottage', 'manor'];
+
+                for (let i = 0; i < positions.length && housesPlaced < maxHouses; i++) {
+                    const houseType = houseTypes[Math.floor(pseudoRandom(chunkSeed + i) * houseTypes.length)];
+                    let createHouseFunc;
+
+                    switch (houseType) {
+                        case 'cabin':
+                            createHouseFunc = createCabin;
+                            break;
+                        case 'cottage':
+                            createHouseFunc = createCottage;
+                            break;
+                        case 'manor':
+                            createHouseFunc = createManor;
+                            break;
+                        default:
+                            createHouseFunc = createCabin;
+                    }
+
+                    if (addObject(positions[i].x, positions[i].z, 12, createHouseFunc, 0, houseType)) {
+                        housesPlaced++;
+                    }
+                }
+            }
+
+            // Add ponds (20% probability per chunk)
+            if (pseudoRandom(chunkSeed + 300) < 0.2) {
+                for (let i = 0; i < positions.length; i++) {
+                    if (addObject(positions[i].x, positions[i].z, 15, createPond, 0, 'pond')) {
+                        break; // Just add one pond per chunk
+                    }
+                }
+            }
+
+            // Add large rocks with moss (30% probability)
+            if (pseudoRandom(chunkSeed + 400) < 0.3) {
+                let rocksPlaced = 0;
+                const maxRocks = 3;
+
+                for (let i = 0; i < positions.length && rocksPlaced < maxRocks; i++) {
+                    if (addObject(positions[i].x, positions[i].z, 8, createLargeRock, 0, 'rock')) {
+                        rocksPlaced++;
+                    }
+                }
+            }
+
+            // Add wooden fences (25% probability)
+            if (pseudoRandom(chunkSeed + 500) < 0.25) {
+                createFence(chunkGroup, chunkSeed, objectPositions);
+            }
+
+            // Add benches (20% probability per chunk)
+            if (pseudoRandom(chunkSeed + 100) < 0.2) {
+                for (let i = 0; i < positions.length; i++) {
+                    if (addObject(positions[i].x, positions[i].z, 5, createBench, 0, 'bench')) {
+                        break; // Just add one bench per chunk
+                    }
+                }
+            }
+        }
+
+        // Create a dirt path through the chunk
+        function createDirtPath(chunkGroup, chunkSeed, objectPositions) {
+            const pseudoRandom = (seed) => ((seed * 9301 + 49297) % 233280) / 233280;
+
+            // Determine path direction
+            const isHorizontal = pseudoRandom(chunkSeed + 1000) < 0.5;
+            const pathWidth = 2 + pseudoRandom(chunkSeed + 1001) * 1.5;
+
+            // Create path segments
+            const pathGeometry = new THREE.PlaneGeometry(isHorizontal ? chunkSize : pathWidth, isHorizontal ? pathWidth : chunkSize);
+            const path = new THREE.Mesh(pathGeometry, pathMaterial);
+            path.rotation.x = -Math.PI / 2;
+
+            // Position the path
+            const offset = (pseudoRandom(chunkSeed + 1002) - 0.5) * chunkSize * 0.6;
+            if (isHorizontal) {
+                path.position.set(0, 0.01, offset); // Slightly above ground to prevent z-fighting
+            } else {
+                path.position.set(offset, 0.01, 0); // Slightly above ground to prevent z-fighting
+            }
+
+            path.receiveShadow = true;
+            path.userData.objectType = 'path';
+            chunkGroup.add(path);
+
+            // Add path to object positions to prevent other objects from spawning on it
+            const pathBounds = {
+                minX: isHorizontal ? -chunkSize / 2 : offset - pathWidth / 2,
+                maxX: isHorizontal ? chunkSize / 2 : offset + pathWidth / 2,
+                minZ: isHorizontal ? offset - pathWidth / 2 : -chunkSize / 2,
+                maxZ: isHorizontal ? offset + pathWidth / 2 : chunkSize / 2
+            };
+
+            // Add multiple points along the path to ensure other objects don't spawn on it
+            for (let i = 0; i < 10; i++) {
+                const pathX = isHorizontal ? (i / 9) * chunkSize - chunkSize / 2 : offset;
+                const pathZ = isHorizontal ? offset : (i / 9) * chunkSize - chunkSize / 2;
+                objectPositions.push({ x: pathX, z: pathZ, type: 'path' });
+            }
+
+            // Add some small rocks or details along the path
+            for (let i = 0; i < 5; i++) {
+                const detailX = isHorizontal ?
+                    (pseudoRandom(chunkSeed + i * 10) * chunkSize - chunkSize / 2) :
+                    offset + (pseudoRandom(chunkSeed + i * 10) - 0.5) * pathWidth * 0.7;
+
+                const detailZ = isHorizontal ?
+                    offset + (pseudoRandom(chunkSeed + i * 10 + 5) - 0.5) * pathWidth * 0.7 :
+                    (pseudoRandom(chunkSeed + i * 10 + 5) * chunkSize - chunkSize / 2);
+
+                if (pseudoRandom(chunkSeed + i * 100) < 0.7) {
+                    // Small rock
+                    const rockSize = 0.2 + pseudoRandom(chunkSeed + i * 200) * 0.3;
+                    const rockGeometry = new THREE.SphereGeometry(rockSize, 4, 4);
+                    const rock = new THREE.Mesh(rockGeometry, rockMaterial);
+                    rock.position.set(detailX, rockSize / 2, detailZ);
+                    rock.castShadow = true;
+                    rock.receiveShadow = true;
+                    rock.userData.objectType = 'small_rock';
+                    chunkGroup.add(rock);
+                }
+            }
+        }
+
+        // Create a wooden fence section
+        function createFence(chunkGroup, chunkSeed, objectPositions) {
+            const pseudoRandom = (seed) => ((seed * 9301 + 49297) % 233280) / 233280;
+
+            // Determine fence direction and position
+            const isHorizontal = pseudoRandom(chunkSeed + 2000) < 0.5;
+            const fenceLength = 10 + pseudoRandom(chunkSeed + 2001) * 15;
+            const posOffset = (pseudoRandom(chunkSeed + 2002) - 0.5) * chunkSize * 0.6;
+
+            const fenceGroup = new THREE.Group();
+            fenceGroup.userData.objectType = 'fence';
+
+            // Create fence posts
+            const postCount = Math.ceil(fenceLength / 2) + 1;
+            const postGeometry = new THREE.BoxGeometry(0.2, 1.2, 0.2);
+
+            for (let i = 0; i < postCount; i++) {
+                const post = new THREE.Mesh(postGeometry, fenceMaterial);
+
+                if (isHorizontal) {
+                    post.position.set(i * 2 - fenceLength / 2, 0.6, posOffset);
+                } else {
+                    post.position.set(posOffset, 0.6, i * 2 - fenceLength / 2);
+                }
+
+                post.castShadow = true;
+                post.receiveShadow = true;
+                fenceGroup.add(post);
+
+                // Add to object positions
+                objectPositions.push({
+                    x: post.position.x,
+                    z: post.position.z,
+                    type: 'fence'
+                });
+            }
+
+            // Create horizontal rails
+            for (let rail = 0; rail < 2; rail++) {
+                const railHeight = 0.3 + rail * 0.5;
+                const railGeometry = new THREE.BoxGeometry(isHorizontal ? fenceLength : 0.1, 0.1, isHorizontal ? 0.1 : fenceLength);
+                const railMesh = new THREE.Mesh(railGeometry, fenceMaterial);
+
+                if (isHorizontal) {
+                    railMesh.position.set(0, railHeight, posOffset);
+                } else {
+                    railMesh.position.set(posOffset, railHeight, 0);
+                }
+
+                railMesh.castShadow = true;
+                railMesh.receiveShadow = true;
+                fenceGroup.add(railMesh);
+            }
+
+            chunkGroup.add(fenceGroup);
+
+            // Add fence bounds to prevent objects spawning on it
+            const fenceBounds = {
+                minX: isHorizontal ? -fenceLength / 2 - 1 : posOffset - 1,
+                maxX: isHorizontal ? fenceLength / 2 + 1 : posOffset + 1,
+                minZ: isHorizontal ? posOffset - 1 : -fenceLength / 2 - 1,
+                maxZ: isHorizontal ? posOffset + 1 : fenceLength / 2 + 1
+            };
+
+            // Add multiple points along the fence to ensure other objects don't spawn on it
+            for (let i = 0; i < 5; i++) {
+                const fenceX = isHorizontal ? (i / 4) * fenceLength - fenceLength / 2 : posOffset;
+                const fenceZ = isHorizontal ? posOffset : (i / 4) * fenceLength - fenceLength / 2;
+                objectPositions.push({ x: fenceX, z: fenceZ, type: 'fence' });
+            }
+        }
+
+        // Simplified object creation functions
+        function createTree(randomSeed) {
+            const tree = new THREE.Group();
+            const trunkHeight = 1.5 + randomSeed * 1.5;
+
+            // Create trunk
+            const trunk = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.2, 0.3, trunkHeight, 6),
+                woodMaterial.clone() // Clone material to avoid sharing
+            );
+            trunk.position.y = trunkHeight / 2;
+            trunk.castShadow = true;
+            trunk.receiveShadow = true;
+            tree.add(trunk);
+
+            // Create foliage (cone shape)
+            const foliageType = randomSeed < 0.3 ? 'pine' : 'deciduous';
+
+            if (foliageType === 'pine') {
+                // Pine tree (multiple cone layers)
+                const layers = 2 + Math.floor(randomSeed * 2);
+                const layerHeight = 1.2;
+
+                for (let i = 0; i < layers; i++) {
+                    const layerSize = 1.2 - (i * 0.2);
+                    const foliage = new THREE.Mesh(
+                        new THREE.ConeGeometry(layerSize, layerHeight, 6),
+                        foliageMaterial.clone()
+                    );
+                    foliage.position.y = trunkHeight + (i * layerHeight * 0.6);
+                    foliage.castShadow = true;
+                    foliage.receiveShadow = true;
+                    tree.add(foliage);
+                }
+            } else {
+                // Deciduous tree (rounded foliage)
+                const foliageSize = 1.2 + randomSeed * 0.8;
+                const foliage = new THREE.Mesh(
+                    new THREE.SphereGeometry(foliageSize, 6, 6),
+                    foliageMaterial.clone()
+                );
+                foliage.position.y = trunkHeight + foliageSize * 0.5;
+                foliage.castShadow = true;
+                foliage.receiveShadow = true;
+                tree.add(foliage);
+            }
+
+            tree.userData.objectType = 'tree';
+            return tree;
+        }
+
+        function createCabin(randomSeed) {
+            const house = new THREE.Group();
+            const baseWidth = 3 + randomSeed * 1.5;
+            const baseDepth = 2 + randomSeed;
+            const baseHeight = 2;
+
+            // Create house base
+            const base = new THREE.Mesh(
+                new THREE.BoxGeometry(baseWidth, baseHeight, baseDepth),
+                woodMaterial.clone() // Clone material to avoid sharing
+            );
+            base.position.y = baseHeight / 2;
+            base.castShadow = true;
+            base.receiveShadow = true;
+            house.add(base);
+
+            // Create roof
+            const roofHeight = 1.5;
+            const roof = new THREE.Mesh(
+                new THREE.ConeGeometry(Math.max(baseWidth, baseDepth) / 1.5, roofHeight, 4),
+                new THREE.MeshStandardMaterial({ color: 0x4d2926, roughness: 0.9 }) // Dark wood roof
+            );
+            roof.position.y = baseHeight + roofHeight / 2;
+            roof.rotation.y = Math.PI / 4;
+            roof.castShadow = true;
+            roof.receiveShadow = true;
+            house.add(roof);
+
+            // Add a door
+            const door = new THREE.Mesh(
+                new THREE.PlaneGeometry(0.8, 1.5),
+                new THREE.MeshStandardMaterial({ color: 0x4d2926, roughness: 0.9 })
+            );
+            door.position.set(0, 0.75, baseDepth / 2 + 0.01);
+            house.add(door);
+
+            // Add windows
+            const windowMaterial = new THREE.MeshStandardMaterial({ color: 0xadd8e6, roughness: 0.3, metalness: 0.5 });
+
+            const window1 = new THREE.Mesh(
+                new THREE.PlaneGeometry(0.6, 0.6),
+                windowMaterial
+            );
+            window1.position.set(-baseWidth / 4, baseHeight / 2 + 0.3, baseDepth / 2 + 0.01);
+            house.add(window1);
+
+            const window2 = new THREE.Mesh(
+                new THREE.PlaneGeometry(0.6, 0.6),
+                windowMaterial
+            );
+            window2.position.set(baseWidth / 4, baseHeight / 2 + 0.3, baseDepth / 2 + 0.01);
+            house.add(window2);
+
+            // Add chimney
+            const chimney = new THREE.Mesh(
+                new THREE.BoxGeometry(0.4, 1.2, 0.4),
+                new THREE.MeshStandardMaterial({ color: 0x8B4513, roughness: 0.9 })
+            );
+            chimney.position.set(baseWidth / 3, baseHeight + 0.6, 0);
+            house.add(chimney);
+
+            house.userData.objectType = 'cabin';
+            return house;
+        }
+
+        function createCottage(randomSeed) {
+            const house = new THREE.Group();
+            const baseWidth = 3.5 + randomSeed * 1.5;
+            const baseDepth = 2.5 + randomSeed;
+            const baseHeight = 2.2;
+
+            // Create house base (stone cottage)
+            const base = new THREE.Mesh(
+                new THREE.BoxGeometry(baseWidth, baseHeight, baseDepth),
+                new THREE.MeshStandardMaterial({ color: 0xb0b0b0, roughness: 0.9 }) // Stone material
+            );
+            base.position.y = baseHeight / 2;
+            base.castShadow = true;
+            base.receiveShadow = true;
+            house.add(base);
+
+            // Create roof (sloped)
+            const roofHeight = 1.8;
+            const roofGeometry = new THREE.BoxGeometry(baseWidth + 0.4, roofHeight, baseDepth + 0.4);
+            // Transform to make it sloped
+            const roofPositions = roofGeometry.attributes.position;
+            for (let i = 0; i < roofPositions.count; i++) {
+                const y = roofPositions.getY(i);
+                if (y > 0) {
+                    roofPositions.setZ(i, roofPositions.getZ(i) * 0.5);
+                }
+            }
+
+            const roof = new THREE.Mesh(
+                roofGeometry,
+                new THREE.MeshStandardMaterial({ color: 0x8B4513, roughness: 0.9 }) // Thatched roof
+            );
+            roof.position.y = baseHeight + roofHeight / 2;
+            roof.rotation.x = Math.PI / 10;
+            roof.castShadow = true;
+            roof.receiveShadow = true;
+            house.add(roof);
+
+            // Add a door (arched)
+            const doorGroup = new THREE.Group();
+            const door = new THREE.Mesh(
+                new THREE.PlaneGeometry(0.9, 1.6),
+                new THREE.MeshStandardMaterial({ color: 0x5d3a1a, roughness: 0.9 })
+            );
+            door.position.set(0, 0, 0.01);
+            doorGroup.add(door);
+
+            // Door arch
+            const archGeometry = new THREE.CircleGeometry(0.45, 8, 0, Math.PI);
+            const arch = new THREE.Mesh(
+                archGeometry,
+                new THREE.MeshStandardMaterial({ color: 0xb0b0b0, roughness: 0.9 })
+            );
+            arch.position.set(0, 0.8, 0);
+            doorGroup.add(arch);
+
+            doorGroup.position.set(0, 0.8, baseDepth / 2 + 0.01);
+            house.add(doorGroup);
+
+            // Add windows (multiple small windows)
+            const windowMaterial = new THREE.MeshStandardMaterial({ color: 0xadd8e6, roughness: 0.3, metalness: 0.5 });
+
+            for (let i = 0; i < 2; i++) {
+                for (let j = 0; j < 2; j++) {
+                    const window = new THREE.Mesh(
+                        new THREE.PlaneGeometry(0.5, 0.5),
+                        windowMaterial
+                    );
+                    window.position.set(
+                        (i * 2 - 1) * baseWidth / 4,
+                        baseHeight / 2 + j * 0.7,
+                        baseDepth / 2 + 0.01
+                    );
+                    house.add(window);
+                }
+            }
+
+            // Add flower boxes under windows
+            const flowerBoxGeometry = new THREE.BoxGeometry(0.7, 0.2, 0.3);
+            const flowerBoxMaterial = new THREE.MeshStandardMaterial({ color: 0x8B4513, roughness: 0.9 });
+
+            for (let i = 0; i < 2; i++) {
+                const flowerBox = new THREE.Mesh(flowerBoxGeometry, flowerBoxMaterial);
+                flowerBox.position.set(
+                    (i * 2 - 1) * baseWidth / 4,
+                    baseHeight / 2 - 0.1,
+                    baseDepth / 2 + 0.2
+                );
+                flowerBox.castShadow = true;
+                flowerBox.receiveShadow = true;
+                house.add(flowerBox);
+
+                // Add flowers
+                for (let f = 0; f < 3; f++) {
+                    const flowerGeometry = new THREE.SphereGeometry(0.1, 4, 4);
+                    const flowerMaterial = new THREE.MeshStandardMaterial({
+                        color: [0xff5555, 0xffff55, 0xff55ff][f % 3],
+                        roughness: 0.8
+                    });
+                    const flower = new THREE.Mesh(flowerGeometry, flowerMaterial);
+                    flower.position.set(
+                        (i * 2 - 1) * baseWidth / 4 + (f - 1) * 0.15,
+                        baseHeight / 2 + 0.1,
+                        baseDepth / 2 + 0.2
+                    );
+                    house.add(flower);
+                }
+            }
+
+            // Add chimney
+            const chimney = new THREE.Mesh(
+                new THREE.BoxGeometry(0.5, 1.5, 0.5),
+                new THREE.MeshStandardMaterial({ color: 0x8B4513, roughness: 0.9 })
+            );
+            chimney.position.set(-baseWidth / 3, baseHeight + 0.8, -baseDepth / 4);
+            house.add(chimney);
+
+            house.userData.objectType = 'cottage';
+            return house;
+        }
+
+        function createManor(randomSeed) {
+            const house = new THREE.Group();
+            const baseWidth = 5 + randomSeed * 2;
+            const baseDepth = 4 + randomSeed;
+            const baseHeight = 3;
+
+            // Create main building
+            const base = new THREE.Mesh(
+                new THREE.BoxGeometry(baseWidth, baseHeight, baseDepth),
+                new THREE.MeshStandardMaterial({ color: 0xe0e0e0, roughness: 0.8 }) // Light stone material
+            );
+            base.position.y = baseHeight / 2;
+            base.castShadow = true;
+            base.receiveShadow = true;
+            house.add(base);
+
+            // Create roof
+            const roofHeight = 2;
+            const roof = new THREE.Mesh(
+                new THREE.BoxGeometry(baseWidth + 0.5, roofHeight, baseDepth + 0.5),
+                new THREE.MeshStandardMaterial({ color: 0x4d2926, roughness: 0.9 }) // Dark wood roof
+            );
+
+            // Transform to make it sloped
+            const roofPositions = roof.geometry.attributes.position;
+            for (let i = 0; i < roofPositions.count; i++) {
+                const y = roofPositions.getY(i);
+                if (y > 0) {
+                    roofPositions.setZ(i, roofPositions.getZ(i) * 0.6);
+                }
+            }
+
+            roof.position.y = baseHeight + roofHeight / 2;
+            roof.castShadow = true;
+            roof.receiveShadow = true;
+            house.add(roof);
+
+            // Add a tower
+            const towerRadius = 1.2;
+            const towerHeight = baseHeight + roofHeight + 1;
+            const tower = new THREE.Mesh(
+                new THREE.CylinderGeometry(towerRadius, towerRadius, towerHeight, 8),
+                new THREE.MeshStandardMaterial({ color: 0xe0e0e0, roughness: 0.8 })
+            );
+            tower.position.set(baseWidth / 2 - towerRadius / 2, towerHeight / 2, -baseDepth / 2 + towerRadius / 2);
+            tower.castShadow = true;
+            tower.receiveShadow = true;
+            house.add(tower);
+
+            // Tower roof (cone)
+            const towerRoof = new THREE.Mesh(
+                new THREE.ConeGeometry(towerRadius + 0.2, 2, 8),
+                new THREE.MeshStandardMaterial({ color: 0x4d2926, roughness: 0.9 })
+            );
+            towerRoof.position.set(
+                baseWidth / 2 - towerRadius / 2,
+                towerHeight + 1,
+                -baseDepth / 2 + towerRadius / 2
+            );
+            towerRoof.castShadow = true;
+            towerRoof.receiveShadow = true;
+            house.add(towerRoof);
+
+            // Add grand entrance
+            const entranceWidth = 2;
+            const entranceDepth = 1;
+            const entranceHeight = 2.5;
+
+            const entrance = new THREE.Mesh(
+                new THREE.BoxGeometry(entranceWidth, entranceHeight, entranceDepth),
+                new THREE.MeshStandardMaterial({ color: 0xe0e0e0, roughness: 0.8 })
+            );
+            entrance.position.set(0, entranceHeight / 2, baseDepth / 2 + entranceDepth / 2);
+            entrance.castShadow = true;
+            entrance.receiveShadow = true;
+            house.add(entrance);
+
+            // Entrance roof
+            const entranceRoof = new THREE.Mesh(
+                new THREE.BoxGeometry(entranceWidth + 0.3, 0.5, entranceDepth + 0.3),
+                new THREE.MeshStandardMaterial({ color: 0x4d2926, roughness: 0.9 })
+            );
+            entranceRoof.position.set(0, entranceHeight + 0.25, baseDepth / 2 + entranceDepth / 2);
+            entranceRoof.castShadow = true;
+            entranceRoof.receiveShadow = true;
+            house.add(entranceRoof);
+
+            // Add door
+            const door = new THREE.Mesh(
+                new THREE.PlaneGeometry(1.2, 2),
+                new THREE.MeshStandardMaterial({ color: 0x5d3a1a, roughness: 0.9 })
+            );
+            door.position.set(0, 1, baseDepth / 2 + entranceDepth + 0.01);
+            house.add(door);
+
+            // Add windows (multiple elegant windows)
+            const windowMaterial = new THREE.MeshStandardMaterial({ color: 0xadd8e6, roughness: 0.3, metalness: 0.5 });
+
+            // Main building windows
+            for (let i = 0; i < 2; i++) {
+                for (let j = 0; j < 2; j++) {
+                    // Front windows
+                    const frontWindow = new THREE.Mesh(
+                        new THREE.PlaneGeometry(0.8, 1.2),
+                        windowMaterial
+                    );
+                    frontWindow.position.set(
+                        (i * 2 - 1) * baseWidth / 4,
+                        baseHeight / 2 + j * 1.2,
+                        baseDepth / 2 + 0.01
+                    );
+                    house.add(frontWindow);
+
+                    // Side windows
+                    const sideWindow = new THREE.Mesh(
+                        new THREE.PlaneGeometry(0.8, 1.2),
+                        windowMaterial
+                    );
+                    sideWindow.rotation.y = Math.PI / 2;
+                    sideWindow.position.set(
+                        baseWidth / 2 + 0.01,
+                        baseHeight / 2 + j * 1.2,
+                        (i * 2 - 1) * baseDepth / 4
+                    );
+                    house.add(sideWindow);
+                }
+            }
+
+            // Tower windows
+            for (let i = 0; i < 3; i++) {
+                const angle = (i * Math.PI * 2) / 3 + Math.PI / 6;
+                const towerWindow = new THREE.Mesh(
+                    new THREE.PlaneGeometry(0.6, 0.9),
+                    windowMaterial
+                );
+                towerWindow.position.set(
+                    baseWidth / 2 - towerRadius / 2 + Math.cos(angle) * (towerRadius + 0.01),
+                    baseHeight / 2 + 0.5,
+                    -baseDepth / 2 + towerRadius / 2 + Math.sin(angle) * (towerRadius + 0.01)
+                );
+                towerWindow.rotation.y = angle + Math.PI / 2;
+                house.add(towerWindow);
+            }
+
+            // Add chimneys
+            const chimney1 = new THREE.Mesh(
+                new THREE.BoxGeometry(0.6, 1.8, 0.6),
+                new THREE.MeshStandardMaterial({ color: 0x8B4513, roughness: 0.9 })
+            );
+            chimney1.position.set(-baseWidth / 3, baseHeight + 1.2, -baseDepth / 4);
+            house.add(chimney1);
+
+            const chimney2 = new THREE.Mesh(
+                new THREE.BoxGeometry(0.6, 1.5, 0.6),
+                new THREE.MeshStandardMaterial({ color: 0x8B4513, roughness: 0.9 })
+            );
+            chimney2.position.set(baseWidth / 4, baseHeight + 1, baseDepth / 4);
+            house.add(chimney2);
+
+            house.userData.objectType = 'manor';
+            return house;
+        }
+
+        function createPond(randomSeed) {
+            const pond = new THREE.Group();
+            const pondRadius = 2 + randomSeed * 2;
+
+            // Create pond water (slightly below ground level)
+            const waterGeometry = new THREE.CircleGeometry(pondRadius, 16);
+            const water = new THREE.Mesh(waterGeometry, waterMaterial.clone());
+            water.rotation.x = -Math.PI / 2;
+            water.position.y = -0.1; // Slightly below ground
+            water.receiveShadow = true;
+            pond.add(water);
+
+            // Create pond edge (slightly raised)
+            const edgeGeometry = new THREE.RingGeometry(pondRadius, pondRadius + 0.3, 16);
+            const edge = new THREE.Mesh(
+                edgeGeometry,
+                new THREE.MeshStandardMaterial({ color: 0x7a5c3d, roughness: 1.0 })
+            );
+            edge.rotation.x = -Math.PI / 2;
+            edge.position.y = -0.05; // Slightly raised from water
+            edge.receiveShadow = true;
+            pond.add(edge);
+
+            // Add lily pads
+            const lilyPadCount = Math.floor(3 + randomSeed * 5);
+
+            for (let i = 0; i < lilyPadCount; i++) {
+                const angle = (i / lilyPadCount) * Math.PI * 2;
+                const distance = randomSeed * pondRadius * 0.7;
+
+                const lilyPadGeometry = new THREE.CircleGeometry(0.3 + randomSeed * 0.2, 5);
+                const lilyPad = new THREE.Mesh(lilyPadGeometry, lilyPadMaterial.clone());
+                lilyPad.rotation.x = -Math.PI / 2;
+                lilyPad.position.set(
+                    Math.cos(angle) * distance,
+                    -0.05, // Just above water
+                    Math.sin(angle) * distance
+                );
+                lilyPad.receiveShadow = true;
+                pond.add(lilyPad);
+
+                // Add flower to some lily pads
+                if (Math.random() < 0.4) {
+                    const flowerGeometry = new THREE.SphereGeometry(0.1, 4, 4);
+                    const flowerMaterial = new THREE.MeshStandardMaterial({
+                        color: 0xffffff,
+                        roughness: 0.8
+                    });
+                    const flower = new THREE.Mesh(flowerGeometry, flowerMaterial);
+                    flower.position.set(
+                        Math.cos(angle) * distance,
+                        0.05, // Above lily pad
+                        Math.sin(angle) * distance
+                    );
+                    pond.add(flower);
+                }
+            }
+
+            // Add some rocks around the edge
+            const rockCount = Math.floor(4 + randomSeed * 4);
+
+            for (let i = 0; i < rockCount; i++) {
+                const angle = (i / rockCount) * Math.PI * 2;
+                const rockSize = 0.2 + randomSeed * 0.3;
+
+                const rockGeometry = new THREE.SphereGeometry(rockSize, 4, 4);
+                const rock = new THREE.Mesh(rockGeometry, rockMaterial.clone());
+                rock.position.set(
+                    Math.cos(angle) * (pondRadius + 0.2),
+                    rockSize / 2 - 0.05, // Partially embedded
+                    Math.sin(angle) * (pondRadius + 0.2)
+                );
+                rock.castShadow = true;
+                rock.receiveShadow = true;
+                pond.add(rock);
+            }
+
+            pond.userData.objectType = 'pond';
+            return pond;
+        }
+
+        function createLargeRock(randomSeed) {
+            const rockGroup = new THREE.Group();
+
+            // Main rock
+            const rockSize = 1 + randomSeed * 1.5;
+            const rockGeometry = new THREE.SphereGeometry(rockSize, 6, 6);
+
+            // Deform the rock to make it more natural
+            const rockPositions = rockGeometry.attributes.position;
+            for (let i = 0; i < rockPositions.count; i++) {
+                const x = rockPositions.getX(i);
+                const y = rockPositions.getY(i);
+                const z = rockPositions.getZ(i);
+
+                // Apply noise to the position
+                rockPositions.setX(i, x * (0.8 + Math.sin(y * 2) * 0.2));
+                rockPositions.setY(i, y * (0.8 + Math.cos(z * 2) * 0.2));
+                rockPositions.setZ(i, z * (0.8 + Math.sin(x * 2) * 0.2));
+            }
+
+            const rock = new THREE.Mesh(rockGeometry, rockMaterial.clone());
+            rock.position.y = rockSize * 0.5 - 0.3; // Partially embedded in ground
+            rock.rotation.y = randomSeed * Math.PI * 2;
+            rock.castShadow = true;
+            rock.receiveShadow = true;
+            rockGroup.add(rock);
+
+            // Add moss patches
+            const mossCount = Math.floor(2 + randomSeed * 4);
+
+            for (let i = 0; i < mossCount; i++) {
+                const mossSize = 0.3 + randomSeed * 0.3;
+                const mossGeometry = new THREE.SphereGeometry(mossSize, 4, 4);
+                const moss = new THREE.Mesh(mossGeometry, mossMaterial.clone());
+
+                // Position moss on top/sides of rock
+                const angle = (i / mossCount) * Math.PI * 2;
+                const height = 0.3 + randomSeed * 0.5;
+
+                moss.position.set(
+                    Math.cos(angle) * rockSize * 0.7,
+                    rockSize * height,
+                    Math.sin(angle) * rockSize * 0.7
+                );
+
+                // Scale moss to be flatter
+                moss.scale.y = 0.3;
+                moss.castShadow = true;
+                moss.receiveShadow = true;
+                rockGroup.add(moss);
+            }
+
+            // Add smaller rocks around the main rock
+            const smallRockCount = Math.floor(2 + randomSeed * 3);
+
+            for (let i = 0; i < smallRockCount; i++) {
+                const angle = (i / smallRockCount) * Math.PI * 2;
+                const smallRockSize = 0.2 + randomSeed * 0.3;
+
+                const smallRockGeometry = new THREE.SphereGeometry(smallRockSize, 4, 4);
+                const smallRock = new THREE.Mesh(smallRockGeometry, rockMaterial.clone());
+                smallRock.position.set(
+                    Math.cos(angle) * (rockSize + smallRockSize),
+                    smallRockSize / 2,
+                    Math.sin(angle) * (rockSize + smallRockSize)
+                );
+                smallRock.castShadow = true;
+                smallRock.receiveShadow = true;
+                rockGroup.add(smallRock);
+            }
+
+            rockGroup.userData.objectType = 'rock';
+            return rockGroup;
+        }
+
+        function createBench() {
+            const bench = new THREE.Group();
+
+            // Create seat
+            const seat = new THREE.Mesh(
+                new THREE.BoxGeometry(2, 0.1, 0.6),
+                woodMaterial.clone() // Clone material to avoid sharing
+            );
+            seat.position.y = 0.5;
+            seat.castShadow = true;
+            seat.receiveShadow = true;
+            bench.add(seat);
+
+            // Create backrest
+            const backrest = new THREE.Mesh(
+                new THREE.BoxGeometry(2, 0.6, 0.1),
+                woodMaterial.clone() // Clone material to avoid sharing
+            );
+            backrest.position.set(0, 0.8, -0.25);
+            backrest.castShadow = true;
+            backrest.receiveShadow = true;
+            bench.add(backrest);
+
+            // Create legs
+            const legMaterial = woodMaterial.clone();
+            legMaterial.color.setHex(0x5d3a1a); // Darker wood for legs
+
+            const leg1 = new THREE.Mesh(
+                new THREE.BoxGeometry(0.1, 0.5, 0.1),
+                legMaterial
+            );
+            leg1.position.set(-0.8, 0.25, 0.2);
+            bench.add(leg1);
+
+            const leg2 = new THREE.Mesh(
+                new THREE.BoxGeometry(0.1, 0.5, 0.1),
+                legMaterial
+            );
+            leg2.position.set(0.8, 0.25, 0.2);
+            bench.add(leg2);
+
+            const leg3 = new THREE.Mesh(
+                new THREE.BoxGeometry(0.1, 0.5, 0.1),
+                legMaterial
+            );
+            leg3.position.set(-0.8, 0.25, -0.2);
+            bench.add(leg3);
+
+            const leg4 = new THREE.Mesh(
+                new THREE.BoxGeometry(0.1, 0.5, 0.1),
+                legMaterial
+            );
+            leg4.position.set(0.8, 0.25, -0.2);
+            bench.add(leg4);
+
+            // Add armrests
+            const armrest1 = new THREE.Mesh(
+                new THREE.BoxGeometry(0.1, 0.3, 0.6),
+                legMaterial
+            );
+            armrest1.position.set(-0.95, 0.65, 0);
+            bench.add(armrest1);
+
+            const armrest2 = new THREE.Mesh(
+                new THREE.BoxGeometry(0.1, 0.3, 0.6),
+                legMaterial
+            );
+            armrest2.position.set(0.95, 0.65, 0);
+            bench.add(armrest2);
+
+            bench.userData.objectType = 'bench';
+            return bench;
+        }
+
+        // Optimized chunk update for infinite world
+        function updateVisibleChunks() {
+            if (!character?.isLoaded) return;
+
+            const { x, z } = getChunkCoords(character.position.x, character.position.z);
+            const dx = Math.abs(character.position.x - lastChunkUpdatePosition.x);
+            const dz = Math.abs(character.position.z - lastChunkUpdatePosition.z);
+
+            // Force update on first load or when moved significantly
+            const shouldUpdate = activeChunks.size === 0 || dx > updateThreshold || dz > updateThreshold;
+
+            if (!shouldUpdate) return;
+
+            lastChunkUpdatePosition = { x: character.position.x, z: character.position.z };
+
+            console.log("Updating chunks at", x, z);
+
+            // Load nearby chunks
+            for (let offsetX = -chunksVisibleInViewDistance; offsetX <= chunksVisibleInViewDistance; offsetX++) {
+                for (let offsetZ = -chunksVisibleInViewDistance; offsetZ <= chunksVisibleInViewDistance; offsetZ++) {
+                    createTerrainChunk(x + offsetX, z + offsetZ);
+                }
+            }
+
+            // Unload distant chunks to keep scene lightweight
+            for (const [key, chunk] of loadedChunks.entries()) {
+                const [chunkX, chunkZ] = key.split(',').map(Number);
+                const distance = Math.max(Math.abs(x - chunkX), Math.abs(z - chunkZ));
+                if (distance > chunksVisibleInViewDistance + 1) {
+                    scene.remove(chunk);
+                    loadedChunks.delete(key);
+                    activeChunks.delete(key);
+                }
+            }
+        }
+
+        // Function to generate a text-based grid map with enhanced information
+        function generateTextMap(characterPosition) {
+            const gridSize = 9; // 9x9 grid centered on character
+            const cellSize = 10; // Each cell represents 10x10 units in the 3D world
+
+            // Calculate grid boundaries
+            const centerX = Math.floor(characterPosition.x / cellSize);
+            const centerZ = Math.floor(characterPosition.z / cellSize);
+            const startX = centerX - Math.floor(gridSize / 2);
+            const startZ = centerZ - Math.floor(gridSize / 2);
+
+            // Get character's facing direction
+            const facingAngle = character.rotation;
+            let directionSymbol = "^"; // Default north - using simpler symbols
+            let directionName = "North";
+
+            // Convert rotation angle to cardinal direction symbol
+            if (facingAngle >= -Math.PI / 4 && facingAngle < Math.PI / 4) {
+                directionSymbol = "^"; // North
+                directionName = "North";
+            } else if (facingAngle >= Math.PI / 4 && facingAngle < 3 * Math.PI / 4) {
+                directionSymbol = ">"; // East
+                directionName = "East";
+            } else if (facingAngle >= 3 * Math.PI / 4 || facingAngle < -3 * Math.PI / 4) {
+                directionSymbol = "v"; // South
+                directionName = "South";
+            } else if (facingAngle >= -3 * Math.PI / 4 && facingAngle < -Math.PI / 4) {
+                directionSymbol = "<"; // West
+                directionName = "West";
+            }
+
+            let textMap = "";
+
+            // Add simple header with position and facing direction
+            textMap += `POSITION: X:${Math.round(characterPosition.x)}, Z:${Math.round(characterPosition.z)} | FACING: ${directionName}\n\n`;
+
+            // Generate the grid with simpler ASCII characters
+            textMap += "+";
+            for (let x = 0; x < gridSize; x++) {
+                textMap += "---+";
+            }
+            textMap += "\n";
+
+            // Generate the grid
+            for (let z = 0; z < gridSize; z++) {
+                const worldZ = (startZ + z) * cellSize;
+                textMap += "|";
+
+                for (let x = 0; x < gridSize; x++) {
+                    const worldX = (startX + x) * cellSize;
+
+                    // Determine what's at this grid cell
+                    let cellChar = " ";
+
+                    // Check if this is the character's position
+                    if (Math.floor(characterPosition.x / cellSize) === startX + x &&
+                        Math.floor(characterPosition.z / cellSize) === startZ + z) {
+                        cellChar = directionSymbol; // Use direction symbol
+                    }
+                    // Check if this is the platform position (at x=10, z=10)
+                    else if (worldX >= 5 && worldX <= 15 && worldZ >= 5 && worldZ <= 15) {
+                        cellChar = "P"; // Platform
+                    }
+                    // Check for environment features based on world coordinates
+                    else {
+                        // Check for objects in loaded chunks
+                        let foundObject = false;
+
+                        // Get the chunk coordinates for this world position
+                        const chunkX = Math.floor(worldX / chunkSize);
+                        const chunkZ = Math.floor(worldZ / chunkSize);
+                        const chunkKey = getChunkKey(chunkX, chunkZ);
+
+                        if (loadedChunks.has(chunkKey)) {
+                            const chunk = loadedChunks.get(chunkKey);
+
+                            // Calculate position within chunk
+                            const localX = worldX - chunkX * chunkSize;
+                            const localZ = worldZ - chunkZ * chunkSize;
+
+                            // Check for objects in this chunk
+                            chunk.traverse(object => {
+                                if (foundObject) return; // Skip if we already found something
+
+                                if (object.userData && object.userData.objectType) {
+                                    // Get object position in world coordinates
+                                    const objWorldPos = new THREE.Vector3();
+                                    object.getWorldPosition(objWorldPos);
+
+                                    // Check if object is within this cell
+                                    const objCellX = Math.floor(objWorldPos.x / cellSize);
+                                    const objCellZ = Math.floor(objWorldPos.z / cellSize);
+
+                                    if (objCellX === startX + x && objCellZ === startZ + z) {
+                                        // Set cell character based on object type
+                                        switch (object.userData.objectType) {
+                                            case 'tree':
+                                                cellChar = "T";
+                                                break;
+                                            case 'cabin':
+                                            case 'cottage':
+                                            case 'manor':
+                                                cellChar = "H";
+                                                break;
+                                            case 'pond':
+                                                cellChar = "W";
+                                                break;
+                                            case 'rock':
+                                                cellChar = "R";
+                                                break;
+                                            case 'bench':
+                                                cellChar = "B";
+                                                break;
+                                            case 'fence':
+                                                cellChar = "F";
+                                                break;
+                                            case 'path':
+                                                cellChar = ".";
+                                                break;
+                                        }
+                                        foundObject = true;
+                                    }
+                                }
+                            });
+                        }
+
+                        // If no specific object found, use procedural generation to determine what's here
+                        if (!foundObject) {
+                            const seed = Math.abs(worldX * 10000 + worldZ);
+                            const pseudoRandom = (seed * 9301 + 49297) % 233280 / 233280;
+
+                            if (pseudoRandom < 0.03) {
+                                cellChar = "H"; // House
+                            } else if (pseudoRandom < 0.20) {
+                                cellChar = "T"; // Tree (higher probability for wooded feel)
+                            } else if (pseudoRandom < 0.22) {
+                                cellChar = "W"; // Pond/Water
+                            } else if (pseudoRandom < 0.25) {
+                                cellChar = "R"; // Rock
+                            } else if (pseudoRandom < 0.27) {
+                                cellChar = "B"; // Bench
+                            } else if (pseudoRandom < 0.30) {
+                                cellChar = "F"; // Fence
+                            } else if (pseudoRandom < 0.35) {
+                                cellChar = "."; // Path
+                            }
+                        }
+                    }
+
+                    textMap += " " + cellChar + " |";
+                }
+                textMap += "\n+";
+
+                for (let x = 0; x < gridSize; x++) {
+                    textMap += "---+";
+                }
+                textMap += "\n";
+            }
+
+            // Add simple compass
+            textMap += "\n  N  \n";
+            textMap += "W + E\n";
+            textMap += "  S  \n";
+
+            // Add detailed legend
+            textMap += "\nLegend:\n";
+            textMap += `${directionSymbol} = You (facing ${directionName})\n`;
+            textMap += "P = Wooden Platform (at coordinates 10,10)\n";
+            textMap += "H = House (Cabin, Cottage, or Manor)\n";
+            textMap += "T = Tree (Pine or Deciduous)\n";
+            textMap += "W = Pond with Lily Pads\n";
+            textMap += "R = Large Rock with Moss\n";
+            textMap += "B = Wooden Bench\n";
+            textMap += "F = Wooden Fence\n";
+            textMap += ". = Dirt Path\n";
+            textMap += "  = Open Space\n";
+
+            // Add goal information
+            textMap += "\nGOAL: Explore the infinite wooded town\n";
+
+            // Add distance to platform
+            const distToPlatform = Math.round(Math.sqrt(
+                Math.pow(characterPosition.x - 10, 2) +
+                Math.pow(characterPosition.z - 10, 2)
+            ));
+
+            textMap += `Distance to platform: ${distToPlatform} units\n`;
+
+            // Add simple direction to platform
+            const angleToPlatform = Math.atan2(10 - characterPosition.z, 10 - characterPosition.x);
+            let platformDirection = "";
+
+            if (angleToPlatform >= -Math.PI / 4 && angleToPlatform < Math.PI / 4) {
+                platformDirection = "East";
+            } else if (angleToPlatform >= Math.PI / 4 && angleToPlatform < 3 * Math.PI / 4) {
+                platformDirection = "North";
+            } else if (angleToPlatform >= 3 * Math.PI / 4 || angleToPlatform < -3 * Math.PI / 4) {
+                platformDirection = "West";
+            } else if (angleToPlatform >= -3 * Math.PI / 4 && angleToPlatform < -Math.PI / 4) {
+                platformDirection = "South";
+            }
+
+            textMap += `Platform is to the ${platformDirection} of you\n`;
+
+            // Add time of day information
+            textMap += "\nTime: Night\n";
+            textMap += "Weather: Clear, Starry Sky with Moon\n";
+
+            return textMap;
+        }
+
+        // AI Movement Control with local model inference
+        async function getAIMovementInstructions(currentPosition, previousActions = [], hitObstacle = false) {
+            try {
+                const statusElement = document.getElementById('ai-thinking');
+                statusElement.textContent = "AI is thinking about what to do next...";
+
+                const modelChoice = document.getElementById('model-choice').value;
+
+                // Generate the text-based map
+                const textMap = generateTextMap(currentPosition);
+
+                // Update environment info panel to show night time
+                document.getElementById('environment-info').innerHTML =
+                    'Environment: Infinite Wooded Town<br>' +
+                    'Time: Night<br>' +
+                    'Weather: Clear, Starry Sky with Moon';
+
+                // Send request to local Python server
+                const response = await fetch(PYTHON_SERVER_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        model_id: modelChoice,
+                        position: {
+                            x: currentPosition.x,
+                            y: currentPosition.y,
+                            z: currentPosition.z
+                        },
+                        hit_wall: hitObstacle,
+                        previous_actions: previousActions.slice(-3),
+                        prompt: `You are an AI controlling a 3D character in an infinite virtual environment resembling a heavily wooded town with trees, houses, benches, ponds with lily pads, large mossy rocks, wooden fences, dirt paths, and a wooden platform at (10, 0.5, 10). You decide what the character does next based on its current state and surroundings.
+
+The character is at position (${currentPosition.x.toFixed(1)}, ${currentPosition.y.toFixed(1)}, ${currentPosition.z.toFixed(1)}) in this infinite wooded town.
+${hitObstacle ? 'The character just hit an obstacle and cannot move in that direction.' : ''}
+It is nighttime with a clear, starry sky and a bright moon illuminating the landscape.
 
 Here is a text-based map of the surrounding area:
 ${textMap}
@@ -708,56 +1702,79 @@ ${textMap}
 Generate ONE natural, lifelike movement for the character to perform next. Return ONLY valid JSON with a single object containing:
 - "action": one of [moveForward, moveBackward, moveLeft, moveRight, jump, sprint, idle, explore, lookAround]
 - "duration": time in seconds (between 0.5 and 4)
-- "thought": a brief description of the character's intention (like "Heading to the platform" or "Exploring the nearby trees")
+- "thought": a brief description of the character's intention (like "Heading to the platform" or "Exploring the nearby pond")
 
-Create an action that would make sense for a character exploring this wooded town, possibly interacting with the features around them. Make the movement feel natural and purposeful.
+Create an action that would make sense for a character exploring this wooded town at night, possibly interacting with the features around them. Make the movement feel natural and purposeful.
 
 Previous actions: ${JSON.stringify(previousActions.slice(-3))}`
-            })
-        });
-        
-        // Get the response data
-        const data = await response.json();
-        
-        console.log('AI Response:', data);
-        statusElement.textContent = "";
-        
-        return [data];
-    } catch (error) {
-        console.error('Error fetching AI instructions:', error);
-        document.getElementById('ai-thinking').textContent = "AI connection error. Using fallback behavior.";
-        
-        return [
-            { action: 'idle', duration: 2, thought: 'Taking in the surroundings' }
-        ];
-    }
-}
-        
+                    })
+                });
 
-        // Lighting setup
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+                // Get the response data
+                const data = await response.json();
+
+                console.log('AI Response:', data);
+                statusElement.textContent = "";
+
+                return [data];
+            } catch (error) {
+                console.error('Error fetching AI instructions:', error);
+                document.getElementById('ai-thinking').textContent = "AI connection error. Using fallback behavior.";
+
+                return [
+                    { action: 'idle', duration: 2, thought: 'Taking in the nighttime surroundings' }
+                ];
+            }
+        }
+
+
+        // Lighting setup for night scene
+        const ambientLight = new THREE.AmbientLight(0x202040, 0.3); // Darker blue ambient for night
         scene.add(ambientLight);
 
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
-        directionalLight.position.set(50, 100, 50);
-        directionalLight.castShadow = true;
-        directionalLight.shadow.mapSize.width = 2048;
-        directionalLight.shadow.mapSize.height = 2048;
-        directionalLight.shadow.camera.near = 0.5;
-        directionalLight.shadow.camera.far = 500;
-        directionalLight.shadow.camera.left = -70;
-        directionalLight.shadow.camera.right = 70;
-        directionalLight.shadow.camera.top = 70;
-        directionalLight.shadow.camera.bottom = -70;
-        scene.add(directionalLight);
+        // Moonlight (directional light)
+        const moonLight = new THREE.DirectionalLight(0xd8e7ff, 0.8); // Soft blue-white moonlight
+        moonLight.position.set(50, 100, 50);
+        moonLight.castShadow = true;
+        moonLight.shadow.mapSize.width = 2048;
+        moonLight.shadow.mapSize.height = 2048;
+        moonLight.shadow.camera.near = 0.5;
+        moonLight.shadow.camera.far = 500;
+        moonLight.shadow.camera.left = -70;
+        moonLight.shadow.camera.right = 70;
+        moonLight.shadow.camera.top = 70;
+        moonLight.shadow.camera.bottom = -70;
+        scene.add(moonLight);
 
-        const hemisphereLight = new THREE.HemisphereLight(0x87ceeb, 0x7cfc00, 0.3);
+        // Add some point lights to simulate fireflies or distant lanterns
+        for (let i = 0; i < 15; i++) {
+            const light = new THREE.PointLight(0xffcc77, 0.5, 20);
+            light.position.set(
+                (Math.random() - 0.5) * 100,
+                0.5 + Math.random() * 2,
+                (Math.random() - 0.5) * 100
+            );
+            scene.add(light);
+
+            // Animate the lights slightly for a firefly effect
+            const lightIntensity = 0.3 + Math.random() * 0.3;
+            light.intensity = lightIntensity;
+
+            // Create a simple animation for the light
+            const animate = () => {
+                light.intensity = lightIntensity * (0.8 + Math.sin(Date.now() * 0.001 + i) * 0.2);
+                requestAnimationFrame(animate);
+            };
+            animate();
+        }
+
+        const hemisphereLight = new THREE.HemisphereLight(0x001133, 0x2d4c1e, 0.2); // Sky color, ground color, intensity
         scene.add(hemisphereLight);
 
         // Camera and renderer setup
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         camera.position.set(0, 5, 10);
-        
+
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setPixelRatio(window.devicePixelRatio);
@@ -839,42 +1856,42 @@ Previous actions: ${JSON.stringify(previousActions.slice(-3))}`
         // Model loading
         const dracoLoader = new DRACOLoader();
         dracoLoader.setDecoderPath('https://unpkg.com/three@0.160.0/examples/jsm/libs/draco/');
-        
+
         const loader = new GLTFLoader();
         loader.setDRACOLoader(dracoLoader);
-        
+
         document.getElementById('debug-info').innerHTML = 'Loading model...';
-        
+
         loader.load(
             'character.glb',
             async function (gltf) {
                 character.model = gltf.scene;
-                
+
                 const box = new THREE.Box3().setFromObject(character.model);
                 const center = box.getCenter(new THREE.Vector3());
                 character.model.position.x = -center.x;
                 character.model.position.z = -center.z;
-                
+
                 const size = box.getSize(new THREE.Vector3());
                 const maxDim = Math.max(size.x, size.y, size.z);
                 if (maxDim > 2) {
                     const scale = 2 / maxDim;
                     character.model.scale.set(scale, scale, scale);
                 }
-                
+
                 // Ensure character is positioned correctly on the ground
                 character.position.y = 0.5; // Start at y=0.5 to be on ground
                 character.model.position.copy(character.position);
-                
-                character.model.traverse(function(node) {
+
+                character.model.traverse(function (node) {
                     if (node.isMesh) {
                         node.castShadow = true;
                         node.receiveShadow = true;
                     }
                 });
-                
+
                 scene.add(character.model);
-                
+
                 if (gltf.animations && gltf.animations.length) {
                     character.mixer = new THREE.AnimationMixer(character.model);
                     gltf.animations.forEach((clip) => {
@@ -882,7 +1899,7 @@ Previous actions: ${JSON.stringify(previousActions.slice(-3))}`
                         character.animations[name] = character.mixer.clipAction(clip);
                         character.animations[name].setLoop(THREE.LoopRepeat);
                     });
-                    
+
                     if (character.animations['IDLE']) {
                         character.animations['IDLE'].play();
                         character.currentAnimation = 'IDLE';
@@ -892,18 +1909,18 @@ Previous actions: ${JSON.stringify(previousActions.slice(-3))}`
                         character.currentAnimation = firstAnim;
                     }
                 }
-                
-                document.getElementById('debug-info').innerHTML = 'Model loaded successfully<br>Animations: ' + 
+
+                document.getElementById('debug-info').innerHTML = 'Model loaded successfully<br>Animations: ' +
                     Object.keys(character.animations).join(', ');
-                
+
                 // Mark character as loaded only after everything is set up
                 character.isLoaded = true;
-                
+
                 // Force ground check immediately
                 checkGrounded();
-                
+
                 updateCameraPosition(true);
-                
+
                 // Initialize the first terrain chunks around the character
                 updateVisibleChunks();
             },
@@ -922,19 +1939,19 @@ Previous actions: ${JSON.stringify(previousActions.slice(-3))}`
             if (!character.mixer || !character.animations[animName]) {
                 return;
             }
-            
-            if (character.currentAnimation !== animName || 
+
+            if (character.currentAnimation !== animName ||
                 (animName === 'RUN' && character.previousState !== character.isSprinting)) {
                 const prevAnim = character.animations[character.currentAnimation];
                 const nextAnim = character.animations[animName];
-                
+
                 nextAnim.reset().fadeIn(0.2).play();
                 nextAnim.timeScale = (animName === 'RUN' && character.isSprinting) ? 1.25 : 1;
-                
+
                 if (prevAnim && prevAnim !== nextAnim) {
                     prevAnim.fadeOut(0.2);
                 }
-                
+
                 character.currentAnimation = animName;
                 character.previousState = character.isSprinting;
             }
@@ -943,45 +1960,45 @@ Previous actions: ${JSON.stringify(previousActions.slice(-3))}`
         // Ground detection with multiple surfaces
         function checkGrounded() {
             if (!character.isLoaded) return false;
-            
+
             const raycaster = new THREE.Raycaster(
                 character.position.clone().add(new THREE.Vector3(0, 0.5, 0)),
                 new THREE.Vector3(0, -1, 0),
                 0,
                 characterControls.groundDetectionRayLength
             );
-            
+
             // Get all objects in the scene that could be ground
             const groundObjects = [];
-            
+
             // Add the platform
             groundObjects.push(platform);
-            
+
             // Add the main floor
             groundObjects.push(floor);
-            
+
             // Add ground from loaded chunks
             for (const chunk of loadedChunks.values()) {
                 chunk.children.forEach(child => {
-                    if (child.isObject3D && child.type === 'Mesh' && 
+                    if (child.isObject3D && child.type === 'Mesh' &&
                         child.rotation.x === -Math.PI / 2) {
                         groundObjects.push(child);
                     }
                 });
             }
-            
+
             const intersects = raycaster.intersectObjects(groundObjects, true);
-            
+
             character.isGrounded = intersects.length > 0;
             if (character.isGrounded) {
                 character.position.y = intersects[0].point.y + characterControls.groundOffset;
-                
+
                 // If character was falling, reset vertical velocity
                 if (character.velocity.y < 0) {
                     character.velocity.y = 0;
                 }
             }
-            
+
             return character.isGrounded;
         }
 
@@ -993,7 +2010,7 @@ Previous actions: ${JSON.stringify(previousActions.slice(-3))}`
                 new THREE.Vector3(newPosition.x, newPosition.y + characterRadius, newPosition.z),
                 characterRadius
             );
-            
+
             // Check for collisions with environment objects
             for (const chunk of loadedChunks.values()) {
                 for (const object of chunk.children) {
@@ -1020,7 +2037,7 @@ Previous actions: ${JSON.stringify(previousActions.slice(-3))}`
                     }
                 }
             }
-            
+
             // Check collision with the platform
             const platformBox = new THREE.Box3().setFromObject(platform);
             if (platformBox.intersectsSphere(characterSphere)) {
@@ -1030,7 +2047,7 @@ Previous actions: ${JSON.stringify(previousActions.slice(-3))}`
                 }
                 return true;
             }
-            
+
             return false;
         }
 
@@ -1039,31 +2056,31 @@ Previous actions: ${JSON.stringify(previousActions.slice(-3))}`
             if (!character.model || !character.isLoaded) {
                 return;
             }
-            
+
             if (cameraState.mode === 'orbit') {
                 orbitControls.target.copy(character.position.clone().add(new THREE.Vector3(0, characterControls.lookAtHeight, 0)));
                 orbitControls.update();
                 return;
             }
-            
+
             const idealOffset = new THREE.Vector3(
                 0,
                 characterControls.cameraHeight,
                 characterControls.cameraDistance
             );
-            
+
             idealOffset.applyAxisAngle(new THREE.Vector3(0, 1, 0), cameraState.rotation.y);
             idealOffset.add(character.position);
-            
+
             if (initial) {
                 camera.position.copy(idealOffset);
             } else {
                 camera.position.lerp(idealOffset, characterControls.cameraSmoothing);
             }
-            
+
             const lookAtPos = character.position.clone();
             lookAtPos.y += characterControls.lookAtHeight;
-            
+
             camera.lookAt(lookAtPos);
             camera.rotateX(cameraState.rotation.x);
         }
@@ -1080,7 +2097,7 @@ Previous actions: ${JSON.stringify(previousActions.slice(-3))}`
             if (e.key === 'c' || e.key === 'C') {
                 cameraState.mode = cameraState.mode === 'follow' ? 'orbit' : 'follow';
                 orbitControls.enabled = cameraState.mode === 'orbit';
-                
+
                 if (cameraState.mode === 'orbit') {
                     orbitControls.target.copy(character.position.clone().add(new THREE.Vector3(0, 1, 0)));
                 }
@@ -1092,10 +2109,10 @@ Previous actions: ${JSON.stringify(previousActions.slice(-3))}`
             const modelChoice = document.getElementById('model-choice').value;
             const modelStatus = document.getElementById('model-status');
             const loadButton = document.getElementById('load-model-btn');
-            
+
             loadButton.disabled = true;
             modelStatus.textContent = `Loading ${modelChoice}...`;
-            
+
             try {
                 // Send request to check if model is loaded
                 const response = await fetch(`${PYTHON_SERVER_URL}/check-model`, {
@@ -1107,13 +2124,13 @@ Previous actions: ${JSON.stringify(previousActions.slice(-3))}`
                         model_id: modelChoice
                     })
                 });
-                
+
                 const data = await response.json();
-                
+
                 if (data.success) {
                     modelStatus.textContent = `Model ${modelChoice} loaded successfully`;
                     modelLoaded = true;
-                    
+
                     // Start AI instructions once model is loaded
                     if (character.isLoaded && !isLoadingInstructions) {
                         isLoadingInstructions = true;
@@ -1127,7 +2144,7 @@ Previous actions: ${JSON.stringify(previousActions.slice(-3))}`
                 modelStatus.textContent = `Connection error: ${error.message}`;
                 console.error('Error checking model:', error);
             }
-            
+
             loadButton.disabled = false;
         });
 
@@ -1135,72 +2152,80 @@ Previous actions: ${JSON.stringify(previousActions.slice(-3))}`
         const clock = new THREE.Clock();
         let lastTime = 0;
         
+        // Set time to sunrise (0.25 represents sunrise in the day-night cycle)
+        dayNightSystem.timeOfDay = 0.25;
+        
+        // Time acceleration factor 
+        const timeAccelerationFactor = 2; 
+
         async function animate() {
             requestAnimationFrame(animate);
-            
             const currentTime = clock.getElapsedTime();
             const delta = Math.min(currentTime - lastTime, 0.1);
             lastTime = currentTime;
             
-            if (cameraState.mode === 'orbit') {
-                orbitControls.update();
-            }
-            
+            // Apply accelerated time to day-night cycle
+            dayNightSystem.update(delta * timeAccelerationFactor);
+    
+    if (cameraState.mode === 'orbit') {
+        orbitControls.update();
+    }
+
             if (character.mixer) {
                 character.mixer.update(delta);
             }
-            
+
             // Update visible chunks as character moves
             if (character.isLoaded) {
                 updateVisibleChunks();
             }
-            
+
             if (!character.isLoaded || !modelLoaded || isLoadingInstructions) {
                 renderer.render(scene, camera);
                 return;
             }
-            
+
             // Always check if character is grounded
             checkGrounded();
-            
+
             if (!sequenceCompleted && aiInstructions.length > 0) {
                 const currentInstruction = aiInstructions[currentInstructionIndex];
-                
+
                 if (!currentInstruction || !currentInstruction.action) {
                     instructionTimer = 0;
                     currentInstructionIndex++;
                     return;
                 }
-                
+
                 instructionTimer += delta;
-                
+
                 const progressPercent = (instructionTimer / currentInstruction.duration) * 100;
                 document.getElementById('action-progress').style.width = `${Math.min(progressPercent, 100)}%`;
-                
-                document.getElementById('ai-status').innerHTML = 
+
+                document.getElementById('ai-status').innerHTML =
                     `<strong>Action:</strong> ${formatActionName(currentInstruction.action)}<br>` +
                     `<strong>Thought:</strong> ${currentInstruction.thought || "..."}<br>` +
                     `<strong>Progress:</strong> ${Math.min(Math.floor(progressPercent), 100)}%`;
-                
+
                 character.isMoving = false;
                 character.isSprinting = false;
                 character.isJumping = false;
                 character.isLookingAround = false;
                 character.velocity.x = 0;
                 character.velocity.z = 0;
-                
+
                 // Calculate movement directions
                 const forward = new THREE.Vector3(0, 0, -1);
                 forward.applyAxisAngle(new THREE.Vector3(0, 1, 0), cameraState.rotation.y);
                 forward.y = 0;
                 forward.normalize();
-                
+
                 const right = new THREE.Vector3();
                 right.crossVectors(new THREE.Vector3(0, 1, 0), forward);
                 right.normalize();
-                
+
                 let moveDirection = new THREE.Vector3();
-                
+
                 switch (currentInstruction.action.toLowerCase()) {
                     case 'moveforward':
                         moveDirection.add(forward);
@@ -1248,33 +2273,33 @@ Previous actions: ${JSON.stringify(previousActions.slice(-3))}`
                     default:
                         console.warn('Unknown action:', currentInstruction.action);
                 }
-                
+
                 // Update character rotation to match movement direction
                 if (character.isMoving && moveDirection.length() > 0) {
                     moveDirection.normalize();
                     character.rotation = Math.atan2(moveDirection.x, moveDirection.z);
                     character.model.rotation.y = character.rotation;
                 }
-                
+
                 if (character.isMoving) {
-                    const speed = characterControls.moveSpeed * 
-                        (character.isSprinting ? characterControls.sprintMultiplier : 1) * 
+                    const speed = characterControls.moveSpeed *
+                        (character.isSprinting ? characterControls.sprintMultiplier : 1) *
                         (character.isGrounded ? 1 : characterControls.airControl);
-                    
+
                     character.velocity.x = moveDirection.x * speed;
                     character.velocity.z = moveDirection.z * speed;
                 } else {
                     character.velocity.x *= characterControls.friction;
                     character.velocity.z *= characterControls.friction;
                 }
-                
+
                 // Apply gravity and ground constraints
                 if (!character.isGrounded) {
                     character.velocity.y -= characterControls.gravity;
                 } else if (!character.isJumping) {
                     character.velocity.y = 0;
                 }
-                
+
                 // Set appropriate animation based on character state
                 if (!character.isGrounded && character.velocity.y < 0) {
                     setAnimation('FALL');
@@ -1293,13 +2318,13 @@ Previous actions: ${JSON.stringify(previousActions.slice(-3))}`
                 } else {
                     setAnimation('IDLE');
                 }
-                
+
                 // Calculate new position with velocity
                 const newPosition = character.position.clone().add(character.velocity);
-                
+
                 // Check for obstacle collisions before applying movement
                 hitObstacle = checkObstacleCollision(newPosition);
-                
+
                 if (!hitObstacle) {
                     // No collision, apply movement
                     character.position.copy(newPosition);
@@ -1308,19 +2333,19 @@ Previous actions: ${JSON.stringify(previousActions.slice(-3))}`
                     // Try moving only in X direction
                     const newPositionX = character.position.clone();
                     newPositionX.x += character.velocity.x;
-                    
+
                     if (!checkObstacleCollision(newPositionX)) {
                         character.position.x = newPositionX.x;
                     }
-                    
+
                     // Try moving only in Z direction
                     const newPositionZ = character.position.clone();
                     newPositionZ.z += character.velocity.z;
-                    
+
                     if (!checkObstacleCollision(newPositionZ)) {
                         character.position.z = newPositionZ.z;
                     }
-                    
+
                     // Reset velocity in directions that had collisions
                     if (character.position.x !== newPosition.x) {
                         character.velocity.x = 0;
@@ -1329,10 +2354,10 @@ Previous actions: ${JSON.stringify(previousActions.slice(-3))}`
                         character.velocity.z = 0;
                     }
                 }
-                
+
                 // Update model position
                 character.model.position.copy(character.position);
-                
+
                 // Check if current instruction is complete
                 if (instructionTimer >= currentInstruction.duration) {
                     character.actionHistory.push({
@@ -1344,10 +2369,10 @@ Previous actions: ${JSON.stringify(previousActions.slice(-3))}`
                             z: character.position.z
                         }
                     });
-                    
+
                     instructionTimer = 0;
                     currentInstructionIndex++;
-                    
+
                     // Reset character state when instruction completes
                     character.isMoving = false;
                     character.isSprinting = false;
@@ -1355,19 +2380,19 @@ Previous actions: ${JSON.stringify(previousActions.slice(-3))}`
                     character.isLookingAround = false;
                     character.velocity.x = 0;
                     character.velocity.z = 0;
-                    
+
                     // Force idle animation between instructions
                     setAnimation('IDLE');
-                    
+
                     // Get new instruction when current one is complete
                     if (currentInstructionIndex >= aiInstructions.length) {
                         isLoadingInstructions = true;
                         document.getElementById('ai-thinking').textContent = "Planning next action...";
-                        
+
                         try {
                             // Get a single new instruction for more dynamic behavior
                             aiInstructions = await getAIMovementInstructions(
-                                character.position, 
+                                character.position,
                                 character.actionHistory,
                                 hitObstacle
                             );
@@ -1381,32 +2406,33 @@ Previous actions: ${JSON.stringify(previousActions.slice(-3))}`
                             ];
                             currentInstructionIndex = 0;
                         }
-                        
+
                         isLoadingInstructions = false;
                     }
                 }
             }
-            
+
             // Update camera position
             updateCameraPosition();
-            
+
             // Update the text map display
             if (character.isLoaded && modelLoaded) {
                 const textMap = generateTextMap(character.position);
                 document.getElementById('text-map').textContent = textMap;
             }
-            
+
             renderer.render(scene, camera);
         }
-        
+
         function formatActionName(action) {
             if (!action) return "Unknown";
             return action
                 .replace(/([A-Z])/g, ' $1')
                 .replace(/^./, str => str.toUpperCase());
         }
-        
+
         animate();
     </script>
 </body>
+
 </html>
