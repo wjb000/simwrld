@@ -45,7 +45,7 @@ def load_model(model_id):
         # Load the model with llama-cpp-python with improved parameters
         model = Llama(
             model_path=model_path,
-            n_ctx=2048,      # Context window size
+            n_ctx=4096,      # Increased context window for map data
             n_threads=4,     # Number of CPU threads to use
             n_batch=512,     # Batch size for prompt processing
             f16_kv=True      # Use half-precision for key/value cache
@@ -134,10 +134,19 @@ def root_endpoint():
     hit_wall = data.get('hit_wall', False)
     previous_actions = data.get('previous_actions', [])
     
+    # NEW: Extract map data from the request
+    map_data = data.get('map_data', '')
+    nearby_objects = data.get('nearby_objects', [])
+    collision_info = data.get('collision_info', '')
+    season = data.get('season', 'Summer')
+    
     logger.info(f"Request received - Model: {model_id}")
     logger.info(f"Character position: X:{position.get('x', 0):.1f}, Y:{position.get('y', 0):.1f}, Z:{position.get('z', 0):.1f}")
     logger.info(f"Hit wall: {hit_wall}")
+    logger.info(f"Season: {season}")
     logger.info(f"Previous actions: {previous_actions[-3:] if previous_actions else []}")
+    logger.info(f"Map data length: {len(map_data) if map_data else 0} characters")
+    logger.info(f"Nearby objects count: {len(nearby_objects)}")
     
     if not model_id or not prompt:
         logger.warning("Missing model_id or prompt")
@@ -150,26 +159,34 @@ def root_endpoint():
         return jsonify({"error": f"Failed to load model {model_id}"}), 500
     
     try:
-        # Create a prompt using Mistral's instruction format
-        simplified_prompt = f"""<s>[INST] You are controlling a 3D character in a virtual environment. Generate the next action for the character.
+        # Create a prompt using Mistral's instruction format with enhanced map data
+        simplified_prompt = f"""<s>[INST] You are controlling a 3D character in a virtual wooded town environment. Generate the next action for the character based on the detailed map information provided.
 
 Current position: X:{position.get('x', 0):.1f}, Y:{position.get('y', 0):.1f}, Z:{position.get('z', 0):.1f}
-Environment: Open field with walls at x=±50 and z=±50
-{' The character just hit a wall.' if hit_wall else ''}
+Current season: {season}
+{' The character just hit a wall or obstacle.' if hit_wall else ''}
+
+=== ENVIRONMENT MAP ===
+{map_data}
+
+=== NEARBY OBJECTS ===
+{json.dumps(nearby_objects[:5], indent=2) if nearby_objects else "No objects detected nearby."}
+
+=== COLLISION INFORMATION ===
+{collision_info}
 
 Choose ONE action from: moveForward, moveBackward, moveLeft, moveRight, jump, sprint, idle, explore, lookAround
 Choose a duration between 0.5 and 4 seconds
-Include a brief thought describing the character's intention
-
+Include a brief thought describing the character's intention based on what you see in the environment
 
 Your response must be a valid JSON object with exactly this format:
-{{"action": "moveForward", "duration": 2.5, "thought": "Exploring the open field"}}
+{{"action": "moveForward", "duration": 2.5, "thought": "Exploring the wooded town"}}
 
 Previous actions: {json.dumps(previous_actions[-3:] if previous_actions else [])} [/INST]"""
 
         logger.info("Sending prompt to model:")
         logger.info("-" * 40)
-        logger.info(simplified_prompt)
+        logger.info(simplified_prompt[:500] + "..." if len(simplified_prompt) > 500 else simplified_prompt)
         logger.info("-" * 40)
         
         # Generate response using llama-cpp with optimized parameters
@@ -196,23 +213,32 @@ Previous actions: {json.dumps(previous_actions[-3:] if previous_actions else [])
         # If the model didn't generate anything, use a predefined action
         if not generated_text:
             logger.warning("Model returned empty response, using predefined action")
-            # Cycle through different actions to make the character move
-            if not previous_actions:
-                action = "lookAround"
-                thought = "Taking in the surroundings"
-            elif len(previous_actions) == 1:
-                action = "moveForward"
-                thought = "Starting to explore the environment"
-            elif len(previous_actions) == 2:
-                action = "moveRight"
-                thought = "Checking what's to the right"
-            elif len(previous_actions) == 3:
-                action = "sprint"
-                thought = "Moving quickly to cover more ground"
+            # Create a more context-aware fallback based on nearby objects
+            if nearby_objects:
+                # Check if there's a path nearby
+                has_path = any("path" in obj.get("type", "").lower() for obj in nearby_objects)
+                # Check if there's a house nearby
+                has_house = any("house" in obj.get("type", "").lower() for obj in nearby_objects)
+                # Check if there's water nearby
+                has_water = any("water" in obj.get("type", "").lower() for obj in nearby_objects)
+                
+                if has_path:
+                    action = "moveForward"
+                    thought = "Following the path to see where it leads"
+                elif has_house:
+                    action = "moveForward"
+                    thought = "Moving toward the house to investigate"
+                elif has_water:
+                    action = "moveForward"
+                    thought = "Heading toward the pond to check it out"
+                else:
+                    # Default exploration
+                    action = random.choice(["moveForward", "moveLeft", "moveRight", "explore"])
+                    thought = "Exploring the wooded town"
             else:
-                # Use a more varied approach for subsequent actions
-                action = random.choice(["moveForward", "moveLeft", "moveRight", "explore", "sprint"])
-                thought = "Continuing to explore the area"
+                # No nearby objects, use standard exploration
+                action = random.choice(["moveForward", "moveLeft", "moveRight", "explore", "lookAround"])
+                thought = "Exploring the environment to find points of interest"
                 
             json_response = {
                 "action": action,
@@ -232,7 +258,7 @@ Previous actions: {json.dumps(previous_actions[-3:] if previous_actions else [])
             json_response["duration"] = 2.0
         if "thought" not in json_response:
             logger.warning("Missing 'thought' field, using fallback")
-            json_response["thought"] = "Exploring the environment"
+            json_response["thought"] = "Exploring the wooded town"
             
         # Validate action is in allowed list
         allowed_actions = ["moveForward", "moveBackward", "moveLeft", "moveRight", 
