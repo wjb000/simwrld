@@ -138,15 +138,19 @@
             display: inline-block;
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
         }
-
         #text-map {
             font-family: 'Courier New', monospace;
             white-space: pre;
             margin: 0;
-            line-height: 1.2;
+            line-height: 1;
             font-weight: bold;
-            letter-spacing: 0.05em;
+            letter-spacing: 0;
             text-shadow: 0 0 2px rgba(255, 255, 255, 0.3);
+            font-size: 10px;
+            transform: scale(0.85);
+            transform-origin: top left;
+            max-height: 50vh;
+            overflow-y: auto;
         }
     </style>
 </head>
@@ -368,7 +372,7 @@ function createDayNightSystem() {
             
             // Update time of day
             this.timeOfDay += deltaTime / this.cycleTimeInSeconds;
-            if (this.timeOfDay >= 1) this.timeOfDay -= 1;
+            if (this.timeOfDay >= .5) this.timeOfDay -= .5;
             
             // Calculate sun/moon position based on time of day
             const angle = this.timeOfDay * Math.PI * 2;
@@ -453,1210 +457,2199 @@ function createDayNightSystem() {
 // Replace createNightSky() call with:
 const dayNightSystem = createDayNightSystem();
 
-        // Chunk utilities
-        function getChunkKey(chunkX, chunkZ) {
-            return `${chunkX},${chunkZ}`;
-        }
+// Chunk utilities
+function getChunkKey(chunkX, chunkZ) {
+    return `${chunkX},${chunkZ}`;
+}
 
-        function getChunkCoords(worldX, worldZ) {
-            return {
-                x: Math.floor(worldX / chunkSize),
-                z: Math.floor(worldZ / chunkSize)
-            };
-        }
+function getChunkCoords(worldX, worldZ) {
+    return {
+        x: Math.floor(worldX / chunkSize),
+        z: Math.floor(worldZ / chunkSize)
+    };
+}
 
-        // Optimized terrain chunk creation for a heavily wooded town
-        function createTerrainChunk(chunkX, chunkZ) {
-            const chunkKey = getChunkKey(chunkX, chunkZ);
-            if (loadedChunks.has(chunkKey)) {
-                activeChunks.add(chunkKey);
-                return loadedChunks.get(chunkKey);
-            }
+// Enhanced tree creation with type specification
+function createTree(randomSeed) {
+    const tree = new THREE.Group();
+    const treeType = randomSeed < 0.3 ? 'pine' : 'deciduous';
+    const trunkHeight = 1.5 + randomSeed * 1.5;
 
-            const chunkGroup = new THREE.Group();
-            chunkGroup.position.set(chunkX * chunkSize, 0, chunkZ * chunkSize);
+    // Create trunk
+    const trunk = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.2, 0.3, trunkHeight, 6),
+        woodMaterial.clone() // Clone material to avoid sharing
+    );
+    trunk.position.y = trunkHeight / 2;
+    trunk.castShadow = true;
+    trunk.receiveShadow = true;
+    tree.add(trunk);
 
-            // Simplified ground (flat for performance)
-            const groundGeometry = new THREE.PlaneGeometry(chunkSize, chunkSize, 1, 1); // Simpler geometry
-            const ground = new THREE.Mesh(groundGeometry, groundMaterial.clone()); // Clone material to avoid sharing
-            ground.rotation.x = -Math.PI / 2;
-            ground.position.y = 0; // Ensure ground is at y=0
-            ground.receiveShadow = true;
-            chunkGroup.add(ground);
+    if (treeType === 'pine') {
+        // Pine tree (multiple cone layers)
+        const layers = 2 + Math.floor(randomSeed * 2);
+        const layerHeight = 1.2;
 
-            // Add environment objects for a heavily wooded town
-            addEnvironmentObjects(chunkGroup, chunkX, chunkZ);
-
-            scene.add(chunkGroup);
-            loadedChunks.set(chunkKey, chunkGroup);
-            activeChunks.add(chunkKey);
-
-            return chunkGroup;
-        }
-
-        // Strategically place objects for a heavily wooded town
-        function addEnvironmentObjects(chunkGroup, chunkX, chunkZ) {
-            const chunkSeed = Math.abs(chunkX * 10000 + chunkZ);
-            const pseudoRandom = (seed) => ((seed * 9301 + 49297) % 233280) / 233280;
-
-            const objectPositions = [];
-
-            // Generate positions for objects - use fixed positions for more consistent placement
-            const positions = [];
-            const numPositions = 60; // More positions to try
-
-            // Use a grid-based approach for more even distribution
-            const gridCells = 7; // 7x7 grid within each chunk
-            const cellSize = chunkSize / gridCells;
-
-            for (let i = 0; i < gridCells; i++) {
-                for (let j = 0; j < gridCells; j++) {
-                    // Add some randomness within each cell
-                    const offsetX = (pseudoRandom(chunkSeed + i * 100 + j) - 0.5) * cellSize * 0.8;
-                    const offsetZ = (pseudoRandom(chunkSeed + i * 100 + j + 50) - 0.5) * cellSize * 0.8;
-
-                    // Calculate position within chunk
-                    const x = (i + 0.5) * cellSize - chunkSize / 2 + offsetX;
-                    const z = (j + 0.5) * cellSize - chunkSize / 2 + offsetZ;
-
-                    positions.push({
-                        x,
-                        z,
-                        seed: chunkSeed + i * 100 + j
-                    });
-                }
-            }
-
-            // Function to check if a position is too close to existing objects
-            function isTooClose(x, z, minDistance) {
-                return objectPositions.some(pos => {
-                    const dx = pos.x - x;
-                    const dz = pos.z - z;
-                    return dx * dx + dz * dz < minDistance * minDistance;
-                });
-            }
-
-            // Function to add an object if it doesn't conflict with existing ones
-            function addObject(x, z, minDistance, createFunc, heightOffset = 0, objectType = 'generic') {
-                const worldX = x + chunkX * chunkSize;
-                const worldZ = z + chunkZ * chunkSize;
-
-                // Avoid platform area
-                if (worldX >= 5 && worldX <= 15 && worldZ >= 5 && worldZ <= 15) return false;
-
-                if (!isTooClose(x, z, minDistance)) {
-                    const object = createFunc(pseudoRandom(chunkSeed + objectPositions.length * 31));
-                    object.position.set(x, heightOffset, z);
-                    object.userData.objectType = objectType; // Store object type for map generation
-                    chunkGroup.add(object);
-                    objectPositions.push({ x, z, type: objectType });
-                    return true;
-                }
-                return false;
-            }
-
-            // Create dirt paths (before other objects)
-            if (pseudoRandom(chunkSeed + 200) < 0.4) {
-                createDirtPath(chunkGroup, chunkSeed, objectPositions);
-            }
-
-            // Place trees (ensure at least 8 trees per chunk for dense forest feel)
-            let treesPlaced = 0;
-            const minTrees = 8;
-            const maxTrees = 15; // More trees for denser forest
-
-            // First pass - try to place minimum number of trees
-            for (let i = 0; i < positions.length && treesPlaced < minTrees; i++) {
-                if (addObject(positions[i].x, positions[i].z, 4, createTree, 0, 'tree')) { // Reduced minimum distance
-                    treesPlaced++;
-                }
-            }
-
-            // Second pass - add more trees up to max if possible
-            for (let i = 0; i < positions.length && treesPlaced < maxTrees; i++) {
-                if (addObject(positions[i].x, positions[i].z, 4, createTree, 0, 'tree')) {
-                    treesPlaced++;
-                }
-            }
-
-            // Add houses (1-2 per chunk with 30% probability)
-            if (pseudoRandom(chunkSeed) < 0.3) {
-                let housesPlaced = 0;
-                const maxHouses = 2;
-                const houseTypes = ['cabin', 'cottage', 'manor'];
-
-                for (let i = 0; i < positions.length && housesPlaced < maxHouses; i++) {
-                    const houseType = houseTypes[Math.floor(pseudoRandom(chunkSeed + i) * houseTypes.length)];
-                    let createHouseFunc;
-
-                    switch (houseType) {
-                        case 'cabin':
-                            createHouseFunc = createCabin;
-                            break;
-                        case 'cottage':
-                            createHouseFunc = createCottage;
-                            break;
-                        case 'manor':
-                            createHouseFunc = createManor;
-                            break;
-                        default:
-                            createHouseFunc = createCabin;
-                    }
-
-                    if (addObject(positions[i].x, positions[i].z, 12, createHouseFunc, 0, houseType)) {
-                        housesPlaced++;
-                    }
-                }
-            }
-
-            // Add ponds (20% probability per chunk)
-            if (pseudoRandom(chunkSeed + 300) < 0.2) {
-                for (let i = 0; i < positions.length; i++) {
-                    if (addObject(positions[i].x, positions[i].z, 15, createPond, 0, 'pond')) {
-                        break; // Just add one pond per chunk
-                    }
-                }
-            }
-
-            // Add large rocks with moss (30% probability)
-            if (pseudoRandom(chunkSeed + 400) < 0.3) {
-                let rocksPlaced = 0;
-                const maxRocks = 3;
-
-                for (let i = 0; i < positions.length && rocksPlaced < maxRocks; i++) {
-                    if (addObject(positions[i].x, positions[i].z, 8, createLargeRock, 0, 'rock')) {
-                        rocksPlaced++;
-                    }
-                }
-            }
-
-            // Add wooden fences (25% probability)
-            if (pseudoRandom(chunkSeed + 500) < 0.25) {
-                createFence(chunkGroup, chunkSeed, objectPositions);
-            }
-
-            // Add benches (20% probability per chunk)
-            if (pseudoRandom(chunkSeed + 100) < 0.2) {
-                for (let i = 0; i < positions.length; i++) {
-                    if (addObject(positions[i].x, positions[i].z, 5, createBench, 0, 'bench')) {
-                        break; // Just add one bench per chunk
-                    }
-                }
-            }
-        }
-
-        // Create a dirt path through the chunk
-        function createDirtPath(chunkGroup, chunkSeed, objectPositions) {
-            const pseudoRandom = (seed) => ((seed * 9301 + 49297) % 233280) / 233280;
-
-            // Determine path direction
-            const isHorizontal = pseudoRandom(chunkSeed + 1000) < 0.5;
-            const pathWidth = 2 + pseudoRandom(chunkSeed + 1001) * 1.5;
-
-            // Create path segments
-            const pathGeometry = new THREE.PlaneGeometry(isHorizontal ? chunkSize : pathWidth, isHorizontal ? pathWidth : chunkSize);
-            const path = new THREE.Mesh(pathGeometry, pathMaterial);
-            path.rotation.x = -Math.PI / 2;
-
-            // Position the path
-            const offset = (pseudoRandom(chunkSeed + 1002) - 0.5) * chunkSize * 0.6;
-            if (isHorizontal) {
-                path.position.set(0, 0.01, offset); // Slightly above ground to prevent z-fighting
-            } else {
-                path.position.set(offset, 0.01, 0); // Slightly above ground to prevent z-fighting
-            }
-
-            path.receiveShadow = true;
-            path.userData.objectType = 'path';
-            chunkGroup.add(path);
-
-            // Add path to object positions to prevent other objects from spawning on it
-            const pathBounds = {
-                minX: isHorizontal ? -chunkSize / 2 : offset - pathWidth / 2,
-                maxX: isHorizontal ? chunkSize / 2 : offset + pathWidth / 2,
-                minZ: isHorizontal ? offset - pathWidth / 2 : -chunkSize / 2,
-                maxZ: isHorizontal ? offset + pathWidth / 2 : chunkSize / 2
-            };
-
-            // Add multiple points along the path to ensure other objects don't spawn on it
-            for (let i = 0; i < 10; i++) {
-                const pathX = isHorizontal ? (i / 9) * chunkSize - chunkSize / 2 : offset;
-                const pathZ = isHorizontal ? offset : (i / 9) * chunkSize - chunkSize / 2;
-                objectPositions.push({ x: pathX, z: pathZ, type: 'path' });
-            }
-
-            // Add some small rocks or details along the path
-            for (let i = 0; i < 5; i++) {
-                const detailX = isHorizontal ?
-                    (pseudoRandom(chunkSeed + i * 10) * chunkSize - chunkSize / 2) :
-                    offset + (pseudoRandom(chunkSeed + i * 10) - 0.5) * pathWidth * 0.7;
-
-                const detailZ = isHorizontal ?
-                    offset + (pseudoRandom(chunkSeed + i * 10 + 5) - 0.5) * pathWidth * 0.7 :
-                    (pseudoRandom(chunkSeed + i * 10 + 5) * chunkSize - chunkSize / 2);
-
-                if (pseudoRandom(chunkSeed + i * 100) < 0.7) {
-                    // Small rock
-                    const rockSize = 0.2 + pseudoRandom(chunkSeed + i * 200) * 0.3;
-                    const rockGeometry = new THREE.SphereGeometry(rockSize, 4, 4);
-                    const rock = new THREE.Mesh(rockGeometry, rockMaterial);
-                    rock.position.set(detailX, rockSize / 2, detailZ);
-                    rock.castShadow = true;
-                    rock.receiveShadow = true;
-                    rock.userData.objectType = 'small_rock';
-                    chunkGroup.add(rock);
-                }
-            }
-        }
-
-        // Create a wooden fence section
-        function createFence(chunkGroup, chunkSeed, objectPositions) {
-            const pseudoRandom = (seed) => ((seed * 9301 + 49297) % 233280) / 233280;
-
-            // Determine fence direction and position
-            const isHorizontal = pseudoRandom(chunkSeed + 2000) < 0.5;
-            const fenceLength = 10 + pseudoRandom(chunkSeed + 2001) * 15;
-            const posOffset = (pseudoRandom(chunkSeed + 2002) - 0.5) * chunkSize * 0.6;
-
-            const fenceGroup = new THREE.Group();
-            fenceGroup.userData.objectType = 'fence';
-
-            // Create fence posts
-            const postCount = Math.ceil(fenceLength / 2) + 1;
-            const postGeometry = new THREE.BoxGeometry(0.2, 1.2, 0.2);
-
-            for (let i = 0; i < postCount; i++) {
-                const post = new THREE.Mesh(postGeometry, fenceMaterial);
-
-                if (isHorizontal) {
-                    post.position.set(i * 2 - fenceLength / 2, 0.6, posOffset);
-                } else {
-                    post.position.set(posOffset, 0.6, i * 2 - fenceLength / 2);
-                }
-
-                post.castShadow = true;
-                post.receiveShadow = true;
-                fenceGroup.add(post);
-
-                // Add to object positions
-                objectPositions.push({
-                    x: post.position.x,
-                    z: post.position.z,
-                    type: 'fence'
-                });
-            }
-
-            // Create horizontal rails
-            for (let rail = 0; rail < 2; rail++) {
-                const railHeight = 0.3 + rail * 0.5;
-                const railGeometry = new THREE.BoxGeometry(isHorizontal ? fenceLength : 0.1, 0.1, isHorizontal ? 0.1 : fenceLength);
-                const railMesh = new THREE.Mesh(railGeometry, fenceMaterial);
-
-                if (isHorizontal) {
-                    railMesh.position.set(0, railHeight, posOffset);
-                } else {
-                    railMesh.position.set(posOffset, railHeight, 0);
-                }
-
-                railMesh.castShadow = true;
-                railMesh.receiveShadow = true;
-                fenceGroup.add(railMesh);
-            }
-
-            chunkGroup.add(fenceGroup);
-
-            // Add fence bounds to prevent objects spawning on it
-            const fenceBounds = {
-                minX: isHorizontal ? -fenceLength / 2 - 1 : posOffset - 1,
-                maxX: isHorizontal ? fenceLength / 2 + 1 : posOffset + 1,
-                minZ: isHorizontal ? posOffset - 1 : -fenceLength / 2 - 1,
-                maxZ: isHorizontal ? posOffset + 1 : fenceLength / 2 + 1
-            };
-
-            // Add multiple points along the fence to ensure other objects don't spawn on it
-            for (let i = 0; i < 5; i++) {
-                const fenceX = isHorizontal ? (i / 4) * fenceLength - fenceLength / 2 : posOffset;
-                const fenceZ = isHorizontal ? posOffset : (i / 4) * fenceLength - fenceLength / 2;
-                objectPositions.push({ x: fenceX, z: fenceZ, type: 'fence' });
-            }
-        }
-
-        // Simplified object creation functions
-        function createTree(randomSeed) {
-            const tree = new THREE.Group();
-            const trunkHeight = 1.5 + randomSeed * 1.5;
-
-            // Create trunk
-            const trunk = new THREE.Mesh(
-                new THREE.CylinderGeometry(0.2, 0.3, trunkHeight, 6),
-                woodMaterial.clone() // Clone material to avoid sharing
+        for (let i = 0; i < layers; i++) {
+            const layerSize = 1.2 - (i * 0.2);
+            const foliage = new THREE.Mesh(
+                new THREE.ConeGeometry(layerSize, layerHeight, 6),
+                foliageMaterial.clone()
             );
-            trunk.position.y = trunkHeight / 2;
-            trunk.castShadow = true;
-            trunk.receiveShadow = true;
-            tree.add(trunk);
-
-            // Create foliage (cone shape)
-            const foliageType = randomSeed < 0.3 ? 'pine' : 'deciduous';
-
-            if (foliageType === 'pine') {
-                // Pine tree (multiple cone layers)
-                const layers = 2 + Math.floor(randomSeed * 2);
-                const layerHeight = 1.2;
-
-                for (let i = 0; i < layers; i++) {
-                    const layerSize = 1.2 - (i * 0.2);
-                    const foliage = new THREE.Mesh(
-                        new THREE.ConeGeometry(layerSize, layerHeight, 6),
-                        foliageMaterial.clone()
-                    );
-                    foliage.position.y = trunkHeight + (i * layerHeight * 0.6);
-                    foliage.castShadow = true;
-                    foliage.receiveShadow = true;
-                    tree.add(foliage);
-                }
-            } else {
-                // Deciduous tree (rounded foliage)
-                const foliageSize = 1.2 + randomSeed * 0.8;
-                const foliage = new THREE.Mesh(
-                    new THREE.SphereGeometry(foliageSize, 6, 6),
-                    foliageMaterial.clone()
-                );
-                foliage.position.y = trunkHeight + foliageSize * 0.5;
-                foliage.castShadow = true;
-                foliage.receiveShadow = true;
-                tree.add(foliage);
-            }
-
-            tree.userData.objectType = 'tree';
-            return tree;
+            foliage.position.y = trunkHeight + (i * layerHeight * 0.6);
+            foliage.castShadow = true;
+            foliage.receiveShadow = true;
+            tree.add(foliage);
         }
+    } else {
+        // Deciduous tree (rounded foliage)
+        const foliageSize = 1.2 + randomSeed * 0.8;
+        const foliage = new THREE.Mesh(
+            new THREE.SphereGeometry(foliageSize, 6, 6),
+            foliageMaterial.clone()
+        );
+        foliage.position.y = trunkHeight + foliageSize * 0.5;
+        foliage.castShadow = true;
+        foliage.receiveShadow = true;
+        tree.add(foliage);
+    }
 
-        function createCabin(randomSeed) {
-            const house = new THREE.Group();
-            const baseWidth = 3 + randomSeed * 1.5;
-            const baseDepth = 2 + randomSeed;
-            const baseHeight = 2;
+    tree.userData.objectType = 'tree';
+    tree.userData.subType = treeType;
+    return tree;
+}
+// Enhanced cabin creation
+function createCabin(randomSeed) {
+    const house = new THREE.Group();
+    const baseWidth = 3 + randomSeed * 1.5;
+    const baseDepth = 2 + randomSeed;
+    const baseHeight = 2;
 
-            // Create house base
-            const base = new THREE.Mesh(
-                new THREE.BoxGeometry(baseWidth, baseHeight, baseDepth),
-                woodMaterial.clone() // Clone material to avoid sharing
-            );
-            base.position.y = baseHeight / 2;
-            base.castShadow = true;
-            base.receiveShadow = true;
-            house.add(base);
+    // Create house base
+    const base = new THREE.Mesh(
+        new THREE.BoxGeometry(baseWidth, baseHeight, baseDepth),
+        woodMaterial.clone() // Clone material to avoid sharing
+    );
+    base.position.y = baseHeight / 2;
+    base.castShadow = true;
+    base.receiveShadow = true;
+    house.add(base);
 
-            // Create roof
-            const roofHeight = 1.5;
-            const roof = new THREE.Mesh(
-                new THREE.ConeGeometry(Math.max(baseWidth, baseDepth) / 1.5, roofHeight, 4),
-                new THREE.MeshStandardMaterial({ color: 0x4d2926, roughness: 0.9 }) // Dark wood roof
-            );
-            roof.position.y = baseHeight + roofHeight / 2;
-            roof.rotation.y = Math.PI / 4;
-            roof.castShadow = true;
-            roof.receiveShadow = true;
-            house.add(roof);
+    // Create roof
+    const roofHeight = 1.5;
+    const roof = new THREE.Mesh(
+        new THREE.ConeGeometry(Math.max(baseWidth, baseDepth) / 1.5, roofHeight, 4),
+        new THREE.MeshStandardMaterial({ color: 0x4d2926, roughness: 0.9 }) // Dark wood roof
+    );
+    roof.position.y = baseHeight + roofHeight / 2;
+    roof.rotation.y = Math.PI / 4;
+    roof.castShadow = true;
+    roof.receiveShadow = true;
+    house.add(roof);
 
-            // Add a door
-            const door = new THREE.Mesh(
-                new THREE.PlaneGeometry(0.8, 1.5),
-                new THREE.MeshStandardMaterial({ color: 0x4d2926, roughness: 0.9 })
-            );
-            door.position.set(0, 0.75, baseDepth / 2 + 0.01);
-            house.add(door);
+    // Add a door
+    const door = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.8, 1.5),
+        new THREE.MeshStandardMaterial({ color: 0x4d2926, roughness: 0.9 })
+    );
+    door.position.set(0, 0.75, baseDepth / 2 + 0.01);
+    house.add(door);
 
-            // Add windows
-            const windowMaterial = new THREE.MeshStandardMaterial({ color: 0xadd8e6, roughness: 0.3, metalness: 0.5 });
+    // Add windows
+    const windowMaterial = new THREE.MeshStandardMaterial({ color: 0xadd8e6, roughness: 0.3, metalness: 0.5 });
 
-            const window1 = new THREE.Mesh(
-                new THREE.PlaneGeometry(0.6, 0.6),
+    const window1 = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.6, 0.6),
+        windowMaterial
+    );
+    window1.position.set(-baseWidth / 4, baseHeight / 2 + 0.3, baseDepth / 2 + 0.01);
+    house.add(window1);
+
+    const window2 = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.6, 0.6),
+        windowMaterial
+    );
+    window2.position.set(baseWidth / 4, baseHeight / 2 + 0.3, baseDepth / 2 + 0.01);
+    house.add(window2);
+
+    // Add chimney
+    const chimney = new THREE.Mesh(
+        new THREE.BoxGeometry(0.4, 1.2, 0.4),
+        new THREE.MeshStandardMaterial({ color: 0x8B4513, roughness: 0.9 })
+    );
+    chimney.position.set(baseWidth / 3, baseHeight + 0.6, 0);
+    house.add(chimney);
+
+    house.userData.objectType = 'house';
+    house.userData.subType = 'cabin';
+    return house;
+}
+
+// Enhanced cottage creation
+function createCottage(randomSeed) {
+    const house = new THREE.Group();
+    const baseWidth = 3.5 + randomSeed * 1.5;
+    const baseDepth = 2.5 + randomSeed;
+    const baseHeight = 2.2;
+
+    // Create house base (stone cottage)
+    const base = new THREE.Mesh(
+        new THREE.BoxGeometry(baseWidth, baseHeight, baseDepth),
+        new THREE.MeshStandardMaterial({ color: 0xb0b0b0, roughness: 0.9 }) // Stone material
+    );
+    base.position.y = baseHeight / 2;
+    base.castShadow = true;
+    base.receiveShadow = true;
+    house.add(base);
+
+    // Create roof (sloped)
+    const roofHeight = 1.8;
+    const roofGeometry = new THREE.BoxGeometry(baseWidth + 0.4, roofHeight, baseDepth + 0.4);
+    // Transform to make it sloped
+    const roofPositions = roofGeometry.attributes.position;
+    for (let i = 0; i < roofPositions.count; i++) {
+        const y = roofPositions.getY(i);
+        if (y > 0) {
+            roofPositions.setZ(i, roofPositions.getZ(i) * 0.5);
+        }
+    }
+
+    const roof = new THREE.Mesh(
+        roofGeometry,
+        new THREE.MeshStandardMaterial({ color: 0x8B4513, roughness: 0.9 }) // Thatched roof
+    );
+    roof.position.y = baseHeight + roofHeight / 2;
+    roof.rotation.x = Math.PI / 10;
+    roof.castShadow = true;
+    roof.receiveShadow = true;
+    house.add(roof);
+
+    // Add a door (arched)
+    const doorGroup = new THREE.Group();
+    const door = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.9, 1.6),
+        new THREE.MeshStandardMaterial({ color: 0x5d3a1a, roughness: 0.9 })
+    );
+    door.position.set(0, 0, 0.01);
+    doorGroup.add(door);
+
+    // Door arch
+    const archGeometry = new THREE.CircleGeometry(0.45, 8, 0, Math.PI);
+    const arch = new THREE.Mesh(
+        archGeometry,
+        new THREE.MeshStandardMaterial({ color: 0xb0b0b0, roughness: 0.9 })
+    );
+    arch.position.set(0, 0.8, 0);
+    doorGroup.add(arch);
+
+    doorGroup.position.set(0, 0.8, baseDepth / 2 + 0.01);
+    house.add(doorGroup);
+
+    // Add windows (multiple small windows)
+    const windowMaterial = new THREE.MeshStandardMaterial({ color: 0xadd8e6, roughness: 0.3, metalness: 0.5 });
+
+    for (let i = 0; i < 2; i++) {
+        for (let j = 0; j < 2; j++) {
+            const window = new THREE.Mesh(
+                new THREE.PlaneGeometry(0.5, 0.5),
                 windowMaterial
             );
-            window1.position.set(-baseWidth / 4, baseHeight / 2 + 0.3, baseDepth / 2 + 0.01);
-            house.add(window1);
+            window.position.set(
+                (i * 2 - 1) * baseWidth / 4,
+                baseHeight / 2 + j * 0.7,
+                baseDepth / 2 + 0.01
+            );
+            house.add(window);
+        }
+    }
 
-            const window2 = new THREE.Mesh(
-                new THREE.PlaneGeometry(0.6, 0.6),
+    // Add flower boxes under windows
+    const flowerBoxGeometry = new THREE.BoxGeometry(0.7, 0.2, 0.3);
+    const flowerBoxMaterial = new THREE.MeshStandardMaterial({ color: 0x8B4513, roughness: 0.9 });
+
+    for (let i = 0; i < 2; i++) {
+        const flowerBox = new THREE.Mesh(flowerBoxGeometry, flowerBoxMaterial);
+        flowerBox.position.set(
+            (i * 2 - 1) * baseWidth / 4,
+            baseHeight / 2 - 0.1,
+            baseDepth / 2 + 0.2
+        );
+        flowerBox.castShadow = true;
+        flowerBox.receiveShadow = true;
+        house.add(flowerBox);
+
+        // Add flowers
+        for (let f = 0; f < 3; f++) {
+            const flowerGeometry = new THREE.SphereGeometry(0.1, 4, 4);
+            const flowerMaterial = new THREE.MeshStandardMaterial({
+                color: [0xff5555, 0xffff55, 0xff55ff][f % 3],
+                roughness: 0.8
+            });
+            const flower = new THREE.Mesh(flowerGeometry, flowerMaterial);
+            flower.position.set(
+                (i * 2 - 1) * baseWidth / 4 + (f - 1) * 0.15,
+                baseHeight / 2 + 0.1,
+                baseDepth / 2 + 0.2
+            );
+            house.add(flower);
+        }
+    }
+
+    // Add chimney
+    const chimney = new THREE.Mesh(
+        new THREE.BoxGeometry(0.5, 1.5, 0.5),
+        new THREE.MeshStandardMaterial({ color: 0x8B4513, roughness: 0.9 })
+    );
+    chimney.position.set(-baseWidth / 3, baseHeight + 0.8, -baseDepth / 4);
+    house.add(chimney);
+
+    house.userData.objectType = 'house';
+    house.userData.subType = 'cottage';
+    return house;
+}
+
+// Enhanced manor creation
+function createManor(randomSeed) {
+    const house = new THREE.Group();
+    const baseWidth = 5 + randomSeed * 2;
+    const baseDepth = 4 + randomSeed;
+    const baseHeight = 3;
+
+    // Create main building
+    const base = new THREE.Mesh(
+        new THREE.BoxGeometry(baseWidth, baseHeight, baseDepth),
+        new THREE.MeshStandardMaterial({ color: 0xe0e0e0, roughness: 0.8 }) // Light stone material
+    );
+    base.position.y = baseHeight / 2;
+    base.castShadow = true;
+    base.receiveShadow = true;
+    house.add(base);
+
+    // Create roof
+    const roofHeight = 2;
+    const roof = new THREE.Mesh(
+        new THREE.BoxGeometry(baseWidth + 0.5, roofHeight, baseDepth + 0.5),
+        new THREE.MeshStandardMaterial({ color: 0x4d2926, roughness: 0.9 }) // Dark wood roof
+    );
+
+    // Transform to make it sloped
+    const roofPositions = roof.geometry.attributes.position;
+    for (let i = 0; i < roofPositions.count; i++) {
+        const y = roofPositions.getY(i);
+        if (y > 0) {
+            roofPositions.setZ(i, roofPositions.getZ(i) * 0.6);
+        }
+    }
+
+    roof.position.y = baseHeight + roofHeight / 2;
+    roof.castShadow = true;
+    roof.receiveShadow = true;
+    house.add(roof);
+
+    // Add a tower
+    const towerRadius = 1.2;
+    const towerHeight = baseHeight + roofHeight + 1;
+    const tower = new THREE.Mesh(
+        new THREE.CylinderGeometry(towerRadius, towerRadius, towerHeight, 8),
+        new THREE.MeshStandardMaterial({ color: 0xe0e0e0, roughness: 0.8 })
+    );
+    tower.position.set(baseWidth / 2 - towerRadius / 2, towerHeight / 2, -baseDepth / 2 + towerRadius / 2);
+    tower.castShadow = true;
+    tower.receiveShadow = true;
+    house.add(tower);
+
+    // Tower roof (cone)
+    const towerRoof = new THREE.Mesh(
+        new THREE.ConeGeometry(towerRadius + 0.2, 2, 8),
+        new THREE.MeshStandardMaterial({ color: 0x4d2926, roughness: 0.9 })
+    );
+    towerRoof.position.set(
+        baseWidth / 2 - towerRadius / 2,
+        towerHeight + 1,
+        -baseDepth / 2 + towerRadius / 2
+    );
+    towerRoof.castShadow = true;
+    towerRoof.receiveShadow = true;
+    house.add(towerRoof);
+
+    // Add grand entrance
+    const entranceWidth = 2;
+    const entranceDepth = 1;
+    const entranceHeight = 2.5;
+
+    const entrance = new THREE.Mesh(
+        new THREE.BoxGeometry(entranceWidth, entranceHeight, entranceDepth),
+        new THREE.MeshStandardMaterial({ color: 0xe0e0e0, roughness: 0.8 })
+    );
+    entrance.position.set(0, entranceHeight / 2, baseDepth / 2 + entranceDepth / 2);
+    entrance.castShadow = true;
+    entrance.receiveShadow = true;
+    house.add(entrance);
+
+    // Entrance roof
+    const entranceRoof = new THREE.Mesh(
+        new THREE.BoxGeometry(entranceWidth + 0.3, 0.5, entranceDepth + 0.3),
+        new THREE.MeshStandardMaterial({ color: 0x4d2926, roughness: 0.9 })
+    );
+    entranceRoof.position.set(0, entranceHeight + 0.25, baseDepth / 2 + entranceDepth / 2);
+    entranceRoof.castShadow = true;
+    entranceRoof.receiveShadow = true;
+    house.add(entranceRoof);
+
+    // Add door
+    const door = new THREE.Mesh(
+        new THREE.PlaneGeometry(1.2, 2),
+        new THREE.MeshStandardMaterial({ color: 0x5d3a1a, roughness: 0.9 })
+    );
+    door.position.set(0, 1, baseDepth / 2 + entranceDepth + 0.01);
+    house.add(door);
+
+    // Add windows (multiple elegant windows)
+    const windowMaterial = new THREE.MeshStandardMaterial({ color: 0xadd8e6, roughness: 0.3, metalness: 0.5 });
+
+    // Main building windows
+    for (let i = 0; i < 2; i++) {
+        for (let j = 0; j < 2; j++) {
+            // Front windows
+            const frontWindow = new THREE.Mesh(
+                new THREE.PlaneGeometry(0.8, 1.2),
                 windowMaterial
             );
-            window2.position.set(baseWidth / 4, baseHeight / 2 + 0.3, baseDepth / 2 + 0.01);
-            house.add(window2);
-
-            // Add chimney
-            const chimney = new THREE.Mesh(
-                new THREE.BoxGeometry(0.4, 1.2, 0.4),
-                new THREE.MeshStandardMaterial({ color: 0x8B4513, roughness: 0.9 })
+            frontWindow.position.set(
+                (i * 2 - 1) * baseWidth / 4,
+                baseHeight / 2 + j * 1.2,
+                baseDepth / 2 + 0.01
             );
-            chimney.position.set(baseWidth / 3, baseHeight + 0.6, 0);
-            house.add(chimney);
+            house.add(frontWindow);
 
-            house.userData.objectType = 'cabin';
-            return house;
+            // Side windows
+            const sideWindow = new THREE.Mesh(
+                new THREE.PlaneGeometry(0.8, 1.2),
+                windowMaterial
+            );
+            sideWindow.rotation.y = Math.PI / 2;
+            sideWindow.position.set(
+                baseWidth / 2 + 0.01,
+                baseHeight / 2 + j * 1.2,
+                (i * 2 - 1) * baseDepth / 4
+            );
+            house.add(sideWindow);
         }
+    }
 
-        function createCottage(randomSeed) {
-            const house = new THREE.Group();
-            const baseWidth = 3.5 + randomSeed * 1.5;
-            const baseDepth = 2.5 + randomSeed;
-            const baseHeight = 2.2;
+    // Tower windows
+    for (let i = 0; i < 3; i++) {
+        const angle = (i * Math.PI * 2) / 3 + Math.PI / 6;
+        const towerWindow = new THREE.Mesh(
+            new THREE.PlaneGeometry(0.6, 0.9),
+            windowMaterial
+        );
+        towerWindow.position.set(
+            baseWidth / 2 - towerRadius / 2 + Math.cos(angle) * (towerRadius + 0.01),
+            baseHeight / 2 + 0.5,
+            -baseDepth / 2 + towerRadius / 2 + Math.sin(angle) * (towerRadius + 0.01)
+        );
+        towerWindow.rotation.y = angle + Math.PI / 2;
+        house.add(towerWindow);
+    }
 
-            // Create house base (stone cottage)
-            const base = new THREE.Mesh(
-                new THREE.BoxGeometry(baseWidth, baseHeight, baseDepth),
-                new THREE.MeshStandardMaterial({ color: 0xb0b0b0, roughness: 0.9 }) // Stone material
+    // Add chimneys
+    const chimney1 = new THREE.Mesh(
+        new THREE.BoxGeometry(0.6, 1.8, 0.6),
+        new THREE.MeshStandardMaterial({ color: 0x8B4513, roughness: 0.9 })
+    );
+    chimney1.position.set(-baseWidth / 3, baseHeight + 1.2, -baseDepth / 4);
+    house.add(chimney1);
+
+    const chimney2 = new THREE.Mesh(
+        new THREE.BoxGeometry(0.6, 1.5, 0.6),
+        new THREE.MeshStandardMaterial({ color: 0x8B4513, roughness: 0.9 })
+    );
+    chimney2.position.set(baseWidth / 4, baseHeight + 1, baseDepth / 4);
+    house.add(chimney2);
+
+    house.userData.objectType = 'house';
+    house.userData.subType = 'manor';
+    return house;
+}
+
+// Create a pond with lily pads
+function createPond(randomSeed) {
+    const pond = new THREE.Group();
+    const pondRadius = 2 + randomSeed * 2;
+
+    // Create pond water (slightly below ground level)
+    const waterGeometry = new THREE.CircleGeometry(pondRadius, 16);
+    const water = new THREE.Mesh(waterGeometry, waterMaterial.clone());
+    water.rotation.x = -Math.PI / 2;
+    water.position.y = -0.1; // Slightly below ground
+    water.receiveShadow = true;
+    pond.add(water);
+
+    // Create pond edge (slightly raised)
+    const edgeGeometry = new THREE.RingGeometry(pondRadius, pondRadius + 0.3, 16);
+    const edge = new THREE.Mesh(
+        edgeGeometry,
+        new THREE.MeshStandardMaterial({ color: 0x7a5c3d, roughness: 1.0 })
+    );
+    edge.rotation.x = -Math.PI / 2;
+    edge.position.y = -0.05; // Slightly raised from water
+    edge.receiveShadow = true;
+    pond.add(edge);
+
+    // Add lily pads
+    const lilyPadCount = Math.floor(3 + randomSeed * 5);
+
+    for (let i = 0; i < lilyPadCount; i++) {
+        const angle = (i / lilyPadCount) * Math.PI * 2;
+        const distance = randomSeed * pondRadius * 0.7;
+
+        const lilyPadGeometry = new THREE.CircleGeometry(0.3 + randomSeed * 0.2, 5);
+        const lilyPad = new THREE.Mesh(lilyPadGeometry, lilyPadMaterial.clone());
+        lilyPad.rotation.x = -Math.PI / 2;
+        lilyPad.position.set(
+            Math.cos(angle) * distance,
+            -0.05, // Just above water
+            Math.sin(angle) * distance
+        );
+        lilyPad.receiveShadow = true;
+        pond.add(lilyPad);
+
+        // Add flower to some lily pads
+        if (Math.random() < 0.4) {
+            const flowerGeometry = new THREE.SphereGeometry(0.1, 4, 4);
+            const flowerMaterial = new THREE.MeshStandardMaterial({
+                color: 0xffffff,
+                roughness: 0.8
+            });
+            const flower = new THREE.Mesh(flowerGeometry, flowerMaterial);
+            flower.position.set(
+                Math.cos(angle) * distance,
+                0.05, // Above lily pad
+                Math.sin(angle) * distance
             );
-            base.position.y = baseHeight / 2;
-            base.castShadow = true;
-            base.receiveShadow = true;
-            house.add(base);
-
-            // Create roof (sloped)
-            const roofHeight = 1.8;
-            const roofGeometry = new THREE.BoxGeometry(baseWidth + 0.4, roofHeight, baseDepth + 0.4);
-            // Transform to make it sloped
-            const roofPositions = roofGeometry.attributes.position;
-            for (let i = 0; i < roofPositions.count; i++) {
-                const y = roofPositions.getY(i);
-                if (y > 0) {
-                    roofPositions.setZ(i, roofPositions.getZ(i) * 0.5);
-                }
-            }
-
-            const roof = new THREE.Mesh(
-                roofGeometry,
-                new THREE.MeshStandardMaterial({ color: 0x8B4513, roughness: 0.9 }) // Thatched roof
-            );
-            roof.position.y = baseHeight + roofHeight / 2;
-            roof.rotation.x = Math.PI / 10;
-            roof.castShadow = true;
-            roof.receiveShadow = true;
-            house.add(roof);
-
-            // Add a door (arched)
-            const doorGroup = new THREE.Group();
-            const door = new THREE.Mesh(
-                new THREE.PlaneGeometry(0.9, 1.6),
-                new THREE.MeshStandardMaterial({ color: 0x5d3a1a, roughness: 0.9 })
-            );
-            door.position.set(0, 0, 0.01);
-            doorGroup.add(door);
-
-            // Door arch
-            const archGeometry = new THREE.CircleGeometry(0.45, 8, 0, Math.PI);
-            const arch = new THREE.Mesh(
-                archGeometry,
-                new THREE.MeshStandardMaterial({ color: 0xb0b0b0, roughness: 0.9 })
-            );
-            arch.position.set(0, 0.8, 0);
-            doorGroup.add(arch);
-
-            doorGroup.position.set(0, 0.8, baseDepth / 2 + 0.01);
-            house.add(doorGroup);
-
-            // Add windows (multiple small windows)
-            const windowMaterial = new THREE.MeshStandardMaterial({ color: 0xadd8e6, roughness: 0.3, metalness: 0.5 });
-
-            for (let i = 0; i < 2; i++) {
-                for (let j = 0; j < 2; j++) {
-                    const window = new THREE.Mesh(
-                        new THREE.PlaneGeometry(0.5, 0.5),
-                        windowMaterial
-                    );
-                    window.position.set(
-                        (i * 2 - 1) * baseWidth / 4,
-                        baseHeight / 2 + j * 0.7,
-                        baseDepth / 2 + 0.01
-                    );
-                    house.add(window);
-                }
-            }
-
-            // Add flower boxes under windows
-            const flowerBoxGeometry = new THREE.BoxGeometry(0.7, 0.2, 0.3);
-            const flowerBoxMaterial = new THREE.MeshStandardMaterial({ color: 0x8B4513, roughness: 0.9 });
-
-            for (let i = 0; i < 2; i++) {
-                const flowerBox = new THREE.Mesh(flowerBoxGeometry, flowerBoxMaterial);
-                flowerBox.position.set(
-                    (i * 2 - 1) * baseWidth / 4,
-                    baseHeight / 2 - 0.1,
-                    baseDepth / 2 + 0.2
-                );
-                flowerBox.castShadow = true;
-                flowerBox.receiveShadow = true;
-                house.add(flowerBox);
-
-                // Add flowers
-                for (let f = 0; f < 3; f++) {
-                    const flowerGeometry = new THREE.SphereGeometry(0.1, 4, 4);
-                    const flowerMaterial = new THREE.MeshStandardMaterial({
-                        color: [0xff5555, 0xffff55, 0xff55ff][f % 3],
-                        roughness: 0.8
-                    });
-                    const flower = new THREE.Mesh(flowerGeometry, flowerMaterial);
-                    flower.position.set(
-                        (i * 2 - 1) * baseWidth / 4 + (f - 1) * 0.15,
-                        baseHeight / 2 + 0.1,
-                        baseDepth / 2 + 0.2
-                    );
-                    house.add(flower);
-                }
-            }
-
-            // Add chimney
-            const chimney = new THREE.Mesh(
-                new THREE.BoxGeometry(0.5, 1.5, 0.5),
-                new THREE.MeshStandardMaterial({ color: 0x8B4513, roughness: 0.9 })
-            );
-            chimney.position.set(-baseWidth / 3, baseHeight + 0.8, -baseDepth / 4);
-            house.add(chimney);
-
-            house.userData.objectType = 'cottage';
-            return house;
+            pond.add(flower);
         }
+    }
 
-        function createManor(randomSeed) {
-            const house = new THREE.Group();
-            const baseWidth = 5 + randomSeed * 2;
-            const baseDepth = 4 + randomSeed;
-            const baseHeight = 3;
+    // Add some rocks around the edge
+    const rockCount = Math.floor(4 + randomSeed * 4);
 
-            // Create main building
-            const base = new THREE.Mesh(
-                new THREE.BoxGeometry(baseWidth, baseHeight, baseDepth),
-                new THREE.MeshStandardMaterial({ color: 0xe0e0e0, roughness: 0.8 }) // Light stone material
-            );
-            base.position.y = baseHeight / 2;
-            base.castShadow = true;
-            base.receiveShadow = true;
-            house.add(base);
+    for (let i = 0; i < rockCount; i++) {
+        const angle = (i / rockCount) * Math.PI * 2;
+        const rockSize = 0.2 + randomSeed * 0.3;
 
-            // Create roof
-            const roofHeight = 2;
-            const roof = new THREE.Mesh(
-                new THREE.BoxGeometry(baseWidth + 0.5, roofHeight, baseDepth + 0.5),
-                new THREE.MeshStandardMaterial({ color: 0x4d2926, roughness: 0.9 }) // Dark wood roof
-            );
+        const rockGeometry = new THREE.SphereGeometry(rockSize, 4, 4);
+        const rock = new THREE.Mesh(rockGeometry, rockMaterial.clone());
+        rock.position.set(
+            Math.cos(angle) * (pondRadius + 0.2),
+            rockSize / 2 - 0.05, // Partially embedded
+            Math.sin(angle) * (pondRadius + 0.2)
+        );
+        rock.castShadow = true;
+        rock.receiveShadow = true;
+        pond.add(rock);
+    }
 
-            // Transform to make it sloped
-            const roofPositions = roof.geometry.attributes.position;
-            for (let i = 0; i < roofPositions.count; i++) {
-                const y = roofPositions.getY(i);
-                if (y > 0) {
-                    roofPositions.setZ(i, roofPositions.getZ(i) * 0.6);
-                }
-            }
+    pond.userData.objectType = 'water';
+    pond.userData.subType = 'pond';
+    return pond;
+}
 
-            roof.position.y = baseHeight + roofHeight / 2;
-            roof.castShadow = true;
-            roof.receiveShadow = true;
-            house.add(roof);
+// Create a large mossy rock
+function createLargeRock(randomSeed) {
+    const rockGroup = new THREE.Group();
 
-            // Add a tower
-            const towerRadius = 1.2;
-            const towerHeight = baseHeight + roofHeight + 1;
-            const tower = new THREE.Mesh(
-                new THREE.CylinderGeometry(towerRadius, towerRadius, towerHeight, 8),
-                new THREE.MeshStandardMaterial({ color: 0xe0e0e0, roughness: 0.8 })
-            );
-            tower.position.set(baseWidth / 2 - towerRadius / 2, towerHeight / 2, -baseDepth / 2 + towerRadius / 2);
-            tower.castShadow = true;
-            tower.receiveShadow = true;
-            house.add(tower);
+    // Main rock
+    const rockSize = 1 + randomSeed * 1.5;
+    const rockGeometry = new THREE.SphereGeometry(rockSize, 6, 6);
 
-            // Tower roof (cone)
-            const towerRoof = new THREE.Mesh(
-                new THREE.ConeGeometry(towerRadius + 0.2, 2, 8),
-                new THREE.MeshStandardMaterial({ color: 0x4d2926, roughness: 0.9 })
-            );
-            towerRoof.position.set(
-                baseWidth / 2 - towerRadius / 2,
-                towerHeight + 1,
-                -baseDepth / 2 + towerRadius / 2
-            );
-            towerRoof.castShadow = true;
-            towerRoof.receiveShadow = true;
-            house.add(towerRoof);
+    // Deform the rock to make it more natural
+    const rockPositions = rockGeometry.attributes.position;
+    for (let i = 0; i < rockPositions.count; i++) {
+        const x = rockPositions.getX(i);
+        const y = rockPositions.getY(i);
+        const z = rockPositions.getZ(i);
 
-            // Add grand entrance
-            const entranceWidth = 2;
-            const entranceDepth = 1;
-            const entranceHeight = 2.5;
+        // Apply noise to the position
+        rockPositions.setX(i, x * (0.8 + Math.sin(y * 2) * 0.2));
+        rockPositions.setY(i, y * (0.8 + Math.cos(z * 2) * 0.2));
+        rockPositions.setZ(i, z * (0.8 + Math.sin(x * 2) * 0.2));
+    }
 
-            const entrance = new THREE.Mesh(
-                new THREE.BoxGeometry(entranceWidth, entranceHeight, entranceDepth),
-                new THREE.MeshStandardMaterial({ color: 0xe0e0e0, roughness: 0.8 })
-            );
-            entrance.position.set(0, entranceHeight / 2, baseDepth / 2 + entranceDepth / 2);
-            entrance.castShadow = true;
-            entrance.receiveShadow = true;
-            house.add(entrance);
+    const rock = new THREE.Mesh(rockGeometry, rockMaterial.clone());
+    rock.position.y = rockSize * 0.5 - 0.3; // Partially embedded in ground
+    rock.rotation.y = randomSeed * Math.PI * 2;
+    rock.castShadow = true;
+    rock.receiveShadow = true;
+    rockGroup.add(rock);
 
-            // Entrance roof
-            const entranceRoof = new THREE.Mesh(
-                new THREE.BoxGeometry(entranceWidth + 0.3, 0.5, entranceDepth + 0.3),
-                new THREE.MeshStandardMaterial({ color: 0x4d2926, roughness: 0.9 })
-            );
-            entranceRoof.position.set(0, entranceHeight + 0.25, baseDepth / 2 + entranceDepth / 2);
-            entranceRoof.castShadow = true;
-            entranceRoof.receiveShadow = true;
-            house.add(entranceRoof);
+    // Add moss patches
+    const mossCount = Math.floor(2 + randomSeed * 4);
 
-            // Add door
-            const door = new THREE.Mesh(
-                new THREE.PlaneGeometry(1.2, 2),
-                new THREE.MeshStandardMaterial({ color: 0x5d3a1a, roughness: 0.9 })
-            );
-            door.position.set(0, 1, baseDepth / 2 + entranceDepth + 0.01);
-            house.add(door);
+    for (let i = 0; i < mossCount; i++) {
+        const mossSize = 0.3 + randomSeed * 0.3;
+        const mossGeometry = new THREE.SphereGeometry(mossSize, 4, 4);
+        const moss = new THREE.Mesh(mossGeometry, mossMaterial.clone());
 
-            // Add windows (multiple elegant windows)
-            const windowMaterial = new THREE.MeshStandardMaterial({ color: 0xadd8e6, roughness: 0.3, metalness: 0.5 });
+        // Position moss on top/sides of rock
+        const angle = (i / mossCount) * Math.PI * 2;
+        const height = 0.3 + randomSeed * 0.5;
 
-            // Main building windows
-            for (let i = 0; i < 2; i++) {
-                for (let j = 0; j < 2; j++) {
-                    // Front windows
-                    const frontWindow = new THREE.Mesh(
-                        new THREE.PlaneGeometry(0.8, 1.2),
-                        windowMaterial
-                    );
-                    frontWindow.position.set(
-                        (i * 2 - 1) * baseWidth / 4,
-                        baseHeight / 2 + j * 1.2,
-                        baseDepth / 2 + 0.01
-                    );
-                    house.add(frontWindow);
+        moss.position.set(
+            Math.cos(angle) * rockSize * 0.7,
+            rockSize * height,
+            Math.sin(angle) * rockSize * 0.7
+        );
 
-                    // Side windows
-                    const sideWindow = new THREE.Mesh(
-                        new THREE.PlaneGeometry(0.8, 1.2),
-                        windowMaterial
-                    );
-                    sideWindow.rotation.y = Math.PI / 2;
-                    sideWindow.position.set(
-                        baseWidth / 2 + 0.01,
-                        baseHeight / 2 + j * 1.2,
-                        (i * 2 - 1) * baseDepth / 4
-                    );
-                    house.add(sideWindow);
-                }
-            }
+        // Scale moss to be flatter
+        moss.scale.y = 0.3;
+        moss.castShadow = true;
+        moss.receiveShadow = true;
+        rockGroup.add(moss);
+    }
 
-            // Tower windows
-            for (let i = 0; i < 3; i++) {
-                const angle = (i * Math.PI * 2) / 3 + Math.PI / 6;
-                const towerWindow = new THREE.Mesh(
-                    new THREE.PlaneGeometry(0.6, 0.9),
-                    windowMaterial
-                );
-                towerWindow.position.set(
-                    baseWidth / 2 - towerRadius / 2 + Math.cos(angle) * (towerRadius + 0.01),
-                    baseHeight / 2 + 0.5,
-                    -baseDepth / 2 + towerRadius / 2 + Math.sin(angle) * (towerRadius + 0.01)
-                );
-                towerWindow.rotation.y = angle + Math.PI / 2;
-                house.add(towerWindow);
-            }
+    // Add smaller rocks around the main rock
+    const smallRockCount = Math.floor(2 + randomSeed * 3);
 
-            // Add chimneys
-            const chimney1 = new THREE.Mesh(
-                new THREE.BoxGeometry(0.6, 1.8, 0.6),
-                new THREE.MeshStandardMaterial({ color: 0x8B4513, roughness: 0.9 })
-            );
-            chimney1.position.set(-baseWidth / 3, baseHeight + 1.2, -baseDepth / 4);
-            house.add(chimney1);
+    for (let i = 0; i < smallRockCount; i++) {
+        const angle = (i / smallRockCount) * Math.PI * 2;
+        const smallRockSize = 0.2 + randomSeed * 0.3;
 
-            const chimney2 = new THREE.Mesh(
-                new THREE.BoxGeometry(0.6, 1.5, 0.6),
-                new THREE.MeshStandardMaterial({ color: 0x8B4513, roughness: 0.9 })
-            );
-            chimney2.position.set(baseWidth / 4, baseHeight + 1, baseDepth / 4);
-            house.add(chimney2);
+        const smallRockGeometry = new THREE.SphereGeometry(smallRockSize, 4, 4);
+        const smallRock = new THREE.Mesh(smallRockGeometry, rockMaterial.clone());
+        smallRock.position.set(
+            Math.cos(angle) * (rockSize + smallRockSize),
+            smallRockSize / 2,
+            Math.sin(angle) * (rockSize + smallRockSize)
+        );
+        smallRock.castShadow = true;
+        smallRock.receiveShadow = true;
+        rockGroup.add(smallRock);
+    }
 
-            house.userData.objectType = 'manor';
-            return house;
+    rockGroup.userData.objectType = 'rock';
+    rockGroup.userData.subType = 'mossy';
+    return rockGroup;
+}
+
+// Create a wooden bench
+function createBench() {
+    const bench = new THREE.Group();
+
+    // Create seat
+    const seat = new THREE.Mesh(
+        new THREE.BoxGeometry(2, 0.1, 0.6),
+        woodMaterial.clone() // Clone material to avoid sharing
+    );
+    seat.position.y = 0.5;
+    seat.castShadow = true;
+    seat.receiveShadow = true;
+    bench.add(seat);
+
+    // Create backrest
+    const backrest = new THREE.Mesh(
+        new THREE.BoxGeometry(2, 0.6, 0.1),
+        woodMaterial.clone() // Clone material to avoid sharing
+    );
+    backrest.position.set(0, 0.8, -0.25);
+    backrest.castShadow = true;
+    backrest.receiveShadow = true;
+    bench.add(backrest);
+
+    // Create legs
+    const legMaterial = woodMaterial.clone();
+    legMaterial.color.setHex(0x5d3a1a); // Darker wood for legs
+
+    const leg1 = new THREE.Mesh(
+        new THREE.BoxGeometry(0.1, 0.5, 0.1),
+        legMaterial
+    );
+    leg1.position.set(-0.8, 0.25, 0.2);
+    bench.add(leg1);
+
+    const leg2 = new THREE.Mesh(
+        new THREE.BoxGeometry(0.1, 0.5, 0.1),
+        legMaterial
+    );
+    leg2.position.set(0.8, 0.25, 0.2);
+    bench.add(leg2);
+
+    const leg3 = new THREE.Mesh(
+        new THREE.BoxGeometry(0.1, 0.5, 0.1),
+        legMaterial
+    );
+    leg3.position.set(-0.8, 0.25, -0.2);
+    bench.add(leg3);
+
+    const leg4 = new THREE.Mesh(
+        new THREE.BoxGeometry(0.1, 0.5, 0.1),
+        legMaterial
+    );
+    leg4.position.set(0.8, 0.25, -0.2);
+    bench.add(leg4);
+
+        // Add armrests
+        const armrest1 = new THREE.Mesh(
+        new THREE.BoxGeometry(0.1, 0.3, 0.6),
+        legMaterial
+    );
+    armrest1.position.set(-0.95, 0.65, 0);
+    bench.add(armrest1);
+
+    const armrest2 = new THREE.Mesh(
+        new THREE.BoxGeometry(0.1, 0.3, 0.6),
+        legMaterial
+    );
+    armrest2.position.set(0.95, 0.65, 0);
+    bench.add(armrest2);
+
+    bench.userData.objectType = 'furniture';
+    bench.userData.subType = 'bench';
+    return bench;
+}
+
+
+
+
+// Optimized terrain chunk creation with improved object tracking
+function createTerrainChunk(chunkX, chunkZ) {
+    const chunkKey = getChunkKey(chunkX, chunkZ);
+    if (loadedChunks.has(chunkKey)) {
+        activeChunks.add(chunkKey);
+        return loadedChunks.get(chunkKey);
+    }
+
+    const chunkGroup = new THREE.Group();
+    chunkGroup.position.set(chunkX * chunkSize, 0, chunkZ * chunkSize);
+    chunkGroup.userData.objectRegistry = []; // Track all objects in this chunk with their exact positions
+
+    // Simplified ground (flat for performance)
+    const groundGeometry = new THREE.PlaneGeometry(chunkSize, chunkSize, 1, 1);
+    const ground = new THREE.Mesh(groundGeometry, groundMaterial.clone());
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = 0;
+    ground.receiveShadow = true;
+    chunkGroup.add(ground);
+
+    // Add environment objects for a heavily wooded town
+    addEnvironmentObjects(chunkGroup, chunkX, chunkZ);
+
+    scene.add(chunkGroup);
+    loadedChunks.set(chunkKey, chunkGroup);
+    activeChunks.add(chunkKey);
+
+    return chunkGroup;
+}
+
+// Enhanced environment objects with better tracking and more variety
+function addEnvironmentObjects(chunkGroup, chunkX, chunkZ) {
+    const chunkSeed = Math.abs(chunkX * 10000 + chunkZ);
+    const pseudoRandom = (seed) => ((seed * 9301 + 49297) % 233280) / 233280;
+
+    const objectPositions = [];
+    const objectRegistry = chunkGroup.userData.objectRegistry;
+
+    // Generate positions for objects - use fixed positions for more consistent placement
+    const positions = [];
+    const numPositions = 80; // More positions to try for denser environment
+
+    // Use a grid-based approach for more even distribution
+    const gridCells = 8; // 8x8 grid within each chunk
+    const cellSize = chunkSize / gridCells;
+
+    for (let i = 0; i < gridCells; i++) {
+        for (let j = 0; j < gridCells; j++) {
+            // Add some randomness within each cell
+            const offsetX = (pseudoRandom(chunkSeed + i * 100 + j) - 0.5) * cellSize * 0.8;
+            const offsetZ = (pseudoRandom(chunkSeed + i * 100 + j + 50) - 0.5) * cellSize * 0.8;
+
+            // Calculate position within chunk
+            const x = (i + 0.5) * cellSize - chunkSize / 2 + offsetX;
+            const z = (j + 0.5) * cellSize - chunkSize / 2 + offsetZ;
+
+            positions.push({
+                x,
+                z,
+                seed: chunkSeed + i * 100 + j
+            });
         }
+    }
 
-        function createPond(randomSeed) {
-            const pond = new THREE.Group();
-            const pondRadius = 2 + randomSeed * 2;
+    // Function to check if a position is too close to existing objects
+    function isTooClose(x, z, minDistance) {
+        return objectPositions.some(pos => {
+            const dx = pos.x - x;
+            const dz = pos.z - z;
+            return dx * dx + dz * dz < minDistance * minDistance;
+        });
+    }
 
-            // Create pond water (slightly below ground level)
-            const waterGeometry = new THREE.CircleGeometry(pondRadius, 16);
-            const water = new THREE.Mesh(waterGeometry, waterMaterial.clone());
-            water.rotation.x = -Math.PI / 2;
-            water.position.y = -0.1; // Slightly below ground
-            water.receiveShadow = true;
-            pond.add(water);
+    // Enhanced function to add an object with precise position tracking
+    function addObject(x, z, minDistance, createFunc, heightOffset = 0, objectType = 'generic', subType = '') {
+        const worldX = x + chunkX * chunkSize;
+        const worldZ = z + chunkZ * chunkSize;
 
-            // Create pond edge (slightly raised)
-            const edgeGeometry = new THREE.RingGeometry(pondRadius, pondRadius + 0.3, 16);
-            const edge = new THREE.Mesh(
-                edgeGeometry,
-                new THREE.MeshStandardMaterial({ color: 0x7a5c3d, roughness: 1.0 })
-            );
-            edge.rotation.x = -Math.PI / 2;
-            edge.position.y = -0.05; // Slightly raised from water
-            edge.receiveShadow = true;
-            pond.add(edge);
+        // Avoid platform area
+        if (worldX >= 5 && worldX <= 15 && worldZ >= 5 && worldZ <= 15) return false;
 
-            // Add lily pads
-            const lilyPadCount = Math.floor(3 + randomSeed * 5);
-
-            for (let i = 0; i < lilyPadCount; i++) {
-                const angle = (i / lilyPadCount) * Math.PI * 2;
-                const distance = randomSeed * pondRadius * 0.7;
-
-                const lilyPadGeometry = new THREE.CircleGeometry(0.3 + randomSeed * 0.2, 5);
-                const lilyPad = new THREE.Mesh(lilyPadGeometry, lilyPadMaterial.clone());
-                lilyPad.rotation.x = -Math.PI / 2;
-                lilyPad.position.set(
-                    Math.cos(angle) * distance,
-                    -0.05, // Just above water
-                    Math.sin(angle) * distance
-                );
-                lilyPad.receiveShadow = true;
-                pond.add(lilyPad);
-
-                // Add flower to some lily pads
-                if (Math.random() < 0.4) {
-                    const flowerGeometry = new THREE.SphereGeometry(0.1, 4, 4);
-                    const flowerMaterial = new THREE.MeshStandardMaterial({
-                        color: 0xffffff,
-                        roughness: 0.8
-                    });
-                    const flower = new THREE.Mesh(flowerGeometry, flowerMaterial);
-                    flower.position.set(
-                        Math.cos(angle) * distance,
-                        0.05, // Above lily pad
-                        Math.sin(angle) * distance
-                    );
-                    pond.add(flower);
-                }
-            }
-
-            // Add some rocks around the edge
-            const rockCount = Math.floor(4 + randomSeed * 4);
-
-            for (let i = 0; i < rockCount; i++) {
-                const angle = (i / rockCount) * Math.PI * 2;
-                const rockSize = 0.2 + randomSeed * 0.3;
-
-                const rockGeometry = new THREE.SphereGeometry(rockSize, 4, 4);
-                const rock = new THREE.Mesh(rockGeometry, rockMaterial.clone());
-                rock.position.set(
-                    Math.cos(angle) * (pondRadius + 0.2),
-                    rockSize / 2 - 0.05, // Partially embedded
-                    Math.sin(angle) * (pondRadius + 0.2)
-                );
-                rock.castShadow = true;
-                rock.receiveShadow = true;
-                pond.add(rock);
-            }
-
-            pond.userData.objectType = 'pond';
-            return pond;
+        if (!isTooClose(x, z, minDistance)) {
+            const object = createFunc(pseudoRandom(chunkSeed + objectPositions.length * 31));
+            object.position.set(x, heightOffset, z);
+            object.userData.objectType = objectType;
+            object.userData.subType = subType || '';
+            chunkGroup.add(object);
+            
+            // Register object with precise world coordinates for map generation
+            objectRegistry.push({
+                type: objectType,
+                subType: subType || '',
+                worldX: worldX,
+                worldZ: worldZ,
+                localX: x,
+                localZ: z
+            });
+            
+            objectPositions.push({ x, z, type: objectType });
+            return true;
         }
+        return false;
+    }
 
-        function createLargeRock(randomSeed) {
-            const rockGroup = new THREE.Group();
+    // Create dirt paths (before other objects)
+    if (pseudoRandom(chunkSeed + 200) < 0.4) {
+        createDirtPath(chunkGroup, chunkSeed, objectPositions, objectRegistry);
+    }
 
-            // Main rock
-            const rockSize = 1 + randomSeed * 1.5;
-            const rockGeometry = new THREE.SphereGeometry(rockSize, 6, 6);
+    // Place trees (ensure at least 8 trees per chunk for dense forest feel)
+    let treesPlaced = 0;
+    const minTrees = 8;
+    const maxTrees = 15;
 
-            // Deform the rock to make it more natural
-            const rockPositions = rockGeometry.attributes.position;
-            for (let i = 0; i < rockPositions.count; i++) {
-                const x = rockPositions.getX(i);
-                const y = rockPositions.getY(i);
-                const z = rockPositions.getZ(i);
+    // First pass - try to place minimum number of trees
+    for (let i = 0; i < positions.length && treesPlaced < minTrees; i++) {
+        const treeType = pseudoRandom(chunkSeed + i * 50) < 0.3 ? 'pine' : 'deciduous';
+        if (addObject(positions[i].x, positions[i].z, 4, createTree, 0, 'tree', treeType)) {
+            treesPlaced++;
+        }
+    }
 
-                // Apply noise to the position
-                rockPositions.setX(i, x * (0.8 + Math.sin(y * 2) * 0.2));
-                rockPositions.setY(i, y * (0.8 + Math.cos(z * 2) * 0.2));
-                rockPositions.setZ(i, z * (0.8 + Math.sin(x * 2) * 0.2));
+    // Second pass - add more trees up to max if possible
+    for (let i = 0; i < positions.length && treesPlaced < maxTrees; i++) {
+        const treeType = pseudoRandom(chunkSeed + i * 50) < 0.3 ? 'pine' : 'deciduous';
+        if (addObject(positions[i].x, positions[i].z, 4, createTree, 0, 'tree', treeType)) {
+            treesPlaced++;
+        }
+    }
+
+    // Add houses (1-2 per chunk with 30% probability)
+    if (pseudoRandom(chunkSeed) < 0.3) {
+        let housesPlaced = 0;
+        const maxHouses = 2;
+        const houseTypes = ['cabin', 'cottage', 'manor'];
+
+        for (let i = 0; i < positions.length && housesPlaced < maxHouses; i++) {
+            const houseType = houseTypes[Math.floor(pseudoRandom(chunkSeed + i) * houseTypes.length)];
+            let createHouseFunc;
+
+            switch (houseType) {
+                case 'cabin':
+                    createHouseFunc = createCabin;
+                    break;
+                case 'cottage':
+                    createHouseFunc = createCottage;
+                    break;
+                case 'manor':
+                    createHouseFunc = createManor;
+                    break;
+                default:
+                    createHouseFunc = createCabin;
             }
 
-            const rock = new THREE.Mesh(rockGeometry, rockMaterial.clone());
-            rock.position.y = rockSize * 0.5 - 0.3; // Partially embedded in ground
-            rock.rotation.y = randomSeed * Math.PI * 2;
+            if (addObject(positions[i].x, positions[i].z, 12, createHouseFunc, 0, 'house', houseType)) {
+                housesPlaced++;
+            }
+        }
+    }
+
+    // Add ponds (20% probability per chunk)
+    if (pseudoRandom(chunkSeed + 300) < 0.2) {
+        for (let i = 0; i < positions.length; i++) {
+            if (addObject(positions[i].x, positions[i].z, 15, createPond, 0, 'water', 'pond')) {
+                break; // Just add one pond per chunk
+            }
+        }
+    }
+
+    // Add large rocks with moss (30% probability)
+    if (pseudoRandom(chunkSeed + 400) < 0.3) {
+        let rocksPlaced = 0;
+        const maxRocks = 3;
+
+        for (let i = 0; i < positions.length && rocksPlaced < maxRocks; i++) {
+            if (addObject(positions[i].x, positions[i].z, 8, createLargeRock, 0, 'rock', 'mossy')) {
+                rocksPlaced++;
+            }
+        }
+    }
+
+    // Add wooden fences (25% probability)
+    if (pseudoRandom(chunkSeed + 500) < 0.25) {
+        createFence(chunkGroup, chunkSeed, objectPositions, objectRegistry);
+    }
+
+    // Add benches (20% probability per chunk)
+    if (pseudoRandom(chunkSeed + 100) < 0.2) {
+        for (let i = 0; i < positions.length; i++) {
+            if (addObject(positions[i].x, positions[i].z, 5, createBench, 0, 'furniture', 'bench')) {
+                break; // Just add one bench per chunk
+            }
+        }
+    }
+    
+    // NEW: Add landmarks (10% probability per chunk)
+    if (pseudoRandom(chunkSeed + 600) < 0.1) {
+        for (let i = 0; i < positions.length; i++) {
+            const landmarkType = pseudoRandom(chunkSeed + i * 70) < 0.5 ? 'statue' : 'well';
+            if (addObject(positions[i].x, positions[i].z, 10, 
+                landmarkType === 'statue' ? createStatue : createWell, 
+                0, 'landmark', landmarkType)) {
+                break; // Just add one landmark per chunk
+            }
+        }
+    }
+    
+    // NEW: Add wildlife (40% probability)
+    if (pseudoRandom(chunkSeed + 700) < 0.4) {
+        let wildlifeCount = 0;
+        const maxWildlife = 3;
+        
+        for (let i = 0; i < positions.length && wildlifeCount < maxWildlife; i++) {
+            const wildlifeType = ['deer', 'rabbit', 'fox'][Math.floor(pseudoRandom(chunkSeed + i * 80) * 3)];
+            if (addObject(positions[i].x, positions[i].z, 6, 
+                createWildlife, 0, 'wildlife', wildlifeType)) {
+                wildlifeCount++;
+            }
+        }
+    }
+    
+    // NEW: Add seasonal elements (based on global season setting)
+    const season = window.currentSeason || 'summer'; // Default to summer if not set
+    if (pseudoRandom(chunkSeed + 800) < 0.3) {
+        let seasonalCount = 0;
+        const maxSeasonal = 4;
+        
+        for (let i = 0; i < positions.length && seasonalCount < maxSeasonal; i++) {
+            let seasonalType = '';
+            let createFunc = null;
+            
+            switch(season) {
+                case 'spring':
+                    seasonalType = 'flowers';
+                    createFunc = createFlowerPatch;
+                    break;
+                case 'summer':
+                    seasonalType = 'beehive';
+                    createFunc = createBeehive;
+                    break;
+                case 'autumn':
+                    seasonalType = 'mushrooms';
+                    createFunc = createMushrooms;
+                    break;
+                case 'winter':
+                    seasonalType = 'snowman';
+                    createFunc = createSnowman;
+                    break;
+            }
+            
+            if (createFunc && addObject(positions[i].x, positions[i].z, 5, 
+                createFunc, 0, 'seasonal', seasonalType)) {
+                seasonalCount++;
+            }
+        }
+    }
+}
+
+// Enhanced dirt path creation with better tracking
+function createDirtPath(chunkGroup, chunkSeed, objectPositions, objectRegistry) {
+    const pseudoRandom = (seed) => ((seed * 9301 + 49297) % 233280) / 233280;
+
+    // Determine path direction
+    const isHorizontal = pseudoRandom(chunkSeed + 1000) < 0.5;
+    const pathWidth = 2 + pseudoRandom(chunkSeed + 1001) * 1.5;
+
+    // Create path segments
+    const pathGeometry = new THREE.PlaneGeometry(isHorizontal ? chunkSize : pathWidth, isHorizontal ? pathWidth : chunkSize);
+    const path = new THREE.Mesh(pathGeometry, pathMaterial);
+    path.rotation.x = -Math.PI / 2;
+
+    // Position the path
+    const offset = (pseudoRandom(chunkSeed + 1002) - 0.5) * chunkSize * 0.6;
+    if (isHorizontal) {
+        path.position.set(0, 0.01, offset); // Slightly above ground to prevent z-fighting
+    } else {
+        path.position.set(offset, 0.01, 0); // Slightly above ground to prevent z-fighting
+    }
+
+    path.receiveShadow = true;
+    path.userData.objectType = 'path';
+    path.userData.subType = 'dirt';
+    chunkGroup.add(path);
+
+    // Register path in object registry with precise coordinates
+    const chunkX = chunkGroup.position.x / chunkSize;
+    const chunkZ = chunkGroup.position.z / chunkSize;
+    
+    // Add multiple points along the path to ensure other objects don't spawn on it
+    for (let i = 0; i < 10; i++) {
+        const pathX = isHorizontal ? (i / 9) * chunkSize - chunkSize / 2 : offset;
+        const pathZ = isHorizontal ? offset : (i / 9) * chunkSize - chunkSize / 2;
+        
+        objectPositions.push({ x: pathX, z: pathZ, type: 'path' });
+        
+        // Register path segment in object registry
+        objectRegistry.push({
+            type: 'path',
+            subType: 'dirt',
+            worldX: pathX + chunkX * chunkSize,
+            worldZ: pathZ + chunkZ * chunkSize,
+            localX: pathX,
+            localZ: pathZ,
+            isHorizontal: isHorizontal
+        });
+    }
+
+    // Add some small rocks or details along the path
+    for (let i = 0; i < 5; i++) {
+        const detailX = isHorizontal ?
+            (pseudoRandom(chunkSeed + i * 10) * chunkSize - chunkSize / 2) :
+            offset + (pseudoRandom(chunkSeed + i * 10) - 0.5) * pathWidth * 0.7;
+
+        const detailZ = isHorizontal ?
+            offset + (pseudoRandom(chunkSeed + i * 10 + 5) - 0.5) * pathWidth * 0.7 :
+            (pseudoRandom(chunkSeed + i * 10 + 5) * chunkSize - chunkSize / 2);
+
+        if (pseudoRandom(chunkSeed + i * 100) < 0.7) {
+            // Small rock
+            const rockSize = 0.2 + pseudoRandom(chunkSeed + i * 200) * 0.3;
+            const rockGeometry = new THREE.SphereGeometry(rockSize, 4, 4);
+            const rock = new THREE.Mesh(rockGeometry, rockMaterial);
+            rock.position.set(detailX, rockSize / 2, detailZ);
             rock.castShadow = true;
             rock.receiveShadow = true;
-            rockGroup.add(rock);
+            rock.userData.objectType = 'rock';
+            rock.userData.subType = 'small';
+            chunkGroup.add(rock);
+            
+            // Register small rock in object registry
+            objectRegistry.push({
+                type: 'rock',
+                subType: 'small',
+                worldX: detailX + chunkX * chunkSize,
+                worldZ: detailZ + chunkZ * chunkSize,
+                localX: detailX,
+                localZ: detailZ
+            });
+        }
+    }
+    
+    // NEW: Add path signs at intersections or endpoints (30% chance)
+    if (pseudoRandom(chunkSeed + 1500) < 0.3) {
+        const signX = isHorizontal ? 
+            (pseudoRandom(chunkSeed + 1501) > 0.5 ? chunkSize/2 - 1 : -chunkSize/2 + 1) : 
+            offset;
+        const signZ = isHorizontal ? 
+            offset : 
+            (pseudoRandom(chunkSeed + 1502) > 0.5 ? chunkSize/2 - 1 : -chunkSize/2 + 1);
+        
+        const sign = createPathSign(pseudoRandom(chunkSeed + 1503));
+        sign.position.set(signX, 0, signZ);
+        chunkGroup.add(sign);
+        
+        // Register sign in object registry
+        objectRegistry.push({
+            type: 'landmark',
+            subType: 'pathSign',
+            worldX: signX + chunkX * chunkSize,
+            worldZ: signZ + chunkZ * chunkSize,
+            localX: signX,
+            localZ: signZ
+        });
+    }
+}
 
-            // Add moss patches
-            const mossCount = Math.floor(2 + randomSeed * 4);
+// Enhanced fence creation with better tracking
+function createFence(chunkGroup, chunkSeed, objectPositions, objectRegistry) {
+    const pseudoRandom = (seed) => ((seed * 9301 + 49297) % 233280) / 233280;
+    const chunkX = chunkGroup.position.x / chunkSize;
+    const chunkZ = chunkGroup.position.z / chunkSize;
 
-            for (let i = 0; i < mossCount; i++) {
-                const mossSize = 0.3 + randomSeed * 0.3;
-                const mossGeometry = new THREE.SphereGeometry(mossSize, 4, 4);
-                const moss = new THREE.Mesh(mossGeometry, mossMaterial.clone());
+    // Determine fence direction and position
+    const isHorizontal = pseudoRandom(chunkSeed + 2000) < 0.5;
+    const fenceLength = 10 + pseudoRandom(chunkSeed + 2001) * 15;
+    const posOffset = (pseudoRandom(chunkSeed + 2002) - 0.5) * chunkSize * 0.6;
 
-                // Position moss on top/sides of rock
-                const angle = (i / mossCount) * Math.PI * 2;
-                const height = 0.3 + randomSeed * 0.5;
+    const fenceGroup = new THREE.Group();
+    fenceGroup.userData.objectType = 'fence';
+    fenceGroup.userData.subType = 'wooden';
 
-                moss.position.set(
-                    Math.cos(angle) * rockSize * 0.7,
-                    rockSize * height,
-                    Math.sin(angle) * rockSize * 0.7
-                );
+    // Create fence posts
+    const postCount = Math.ceil(fenceLength / 2) + 1;
+    const postGeometry = new THREE.BoxGeometry(0.2, 1.2, 0.2);
 
-                // Scale moss to be flatter
-                moss.scale.y = 0.3;
-                moss.castShadow = true;
-                moss.receiveShadow = true;
-                rockGroup.add(moss);
-            }
+    for (let i = 0; i < postCount; i++) {
+        const post = new THREE.Mesh(postGeometry, fenceMaterial);
 
-            // Add smaller rocks around the main rock
-            const smallRockCount = Math.floor(2 + randomSeed * 3);
-
-            for (let i = 0; i < smallRockCount; i++) {
-                const angle = (i / smallRockCount) * Math.PI * 2;
-                const smallRockSize = 0.2 + randomSeed * 0.3;
-
-                const smallRockGeometry = new THREE.SphereGeometry(smallRockSize, 4, 4);
-                const smallRock = new THREE.Mesh(smallRockGeometry, rockMaterial.clone());
-                smallRock.position.set(
-                    Math.cos(angle) * (rockSize + smallRockSize),
-                    smallRockSize / 2,
-                    Math.sin(angle) * (rockSize + smallRockSize)
-                );
-                smallRock.castShadow = true;
-                smallRock.receiveShadow = true;
-                rockGroup.add(smallRock);
-            }
-
-            rockGroup.userData.objectType = 'rock';
-            return rockGroup;
+        if (isHorizontal) {
+            post.position.set(i * 2 - fenceLength / 2, 0.6, posOffset);
+        } else {
+            post.position.set(posOffset, 0.6, i * 2 - fenceLength / 2);
         }
 
-        function createBench() {
-            const bench = new THREE.Group();
+        post.castShadow = true;
+        post.receiveShadow = true;
+        fenceGroup.add(post);
 
-            // Create seat
-            const seat = new THREE.Mesh(
-                new THREE.BoxGeometry(2, 0.1, 0.6),
-                woodMaterial.clone() // Clone material to avoid sharing
-            );
-            seat.position.y = 0.5;
-            seat.castShadow = true;
-            seat.receiveShadow = true;
-            bench.add(seat);
+        // Add to object positions
+        objectPositions.push({
+            x: post.position.x,
+            z: post.position.z,
+            type: 'fence'
+        });
+        
+        // Register fence post in object registry
+        objectRegistry.push({
+            type: 'fence',
+            subType: 'post',
+            worldX: post.position.x + chunkX * chunkSize,
+            worldZ: post.position.z + chunkZ * chunkSize,
+            localX: post.position.x,
+            localZ: post.position.z
+        });
+    }
 
-            // Create backrest
-            const backrest = new THREE.Mesh(
-                new THREE.BoxGeometry(2, 0.6, 0.1),
-                woodMaterial.clone() // Clone material to avoid sharing
-            );
-            backrest.position.set(0, 0.8, -0.25);
-            backrest.castShadow = true;
-            backrest.receiveShadow = true;
-            bench.add(backrest);
+    // Create horizontal rails
+    for (let rail = 0; rail < 2; rail++) {
+        const railHeight = 0.3 + rail * 0.5;
+        const railGeometry = new THREE.BoxGeometry(isHorizontal ? fenceLength : 0.1, 0.1, isHorizontal ? 0.1 : fenceLength);
+        const railMesh = new THREE.Mesh(railGeometry, fenceMaterial);
 
-            // Create legs
-            const legMaterial = woodMaterial.clone();
-            legMaterial.color.setHex(0x5d3a1a); // Darker wood for legs
-
-            const leg1 = new THREE.Mesh(
-                new THREE.BoxGeometry(0.1, 0.5, 0.1),
-                legMaterial
-            );
-            leg1.position.set(-0.8, 0.25, 0.2);
-            bench.add(leg1);
-
-            const leg2 = new THREE.Mesh(
-                new THREE.BoxGeometry(0.1, 0.5, 0.1),
-                legMaterial
-            );
-            leg2.position.set(0.8, 0.25, 0.2);
-            bench.add(leg2);
-
-            const leg3 = new THREE.Mesh(
-                new THREE.BoxGeometry(0.1, 0.5, 0.1),
-                legMaterial
-            );
-            leg3.position.set(-0.8, 0.25, -0.2);
-            bench.add(leg3);
-
-            const leg4 = new THREE.Mesh(
-                new THREE.BoxGeometry(0.1, 0.5, 0.1),
-                legMaterial
-            );
-            leg4.position.set(0.8, 0.25, -0.2);
-            bench.add(leg4);
-
-            // Add armrests
-            const armrest1 = new THREE.Mesh(
-                new THREE.BoxGeometry(0.1, 0.3, 0.6),
-                legMaterial
-            );
-            armrest1.position.set(-0.95, 0.65, 0);
-            bench.add(armrest1);
-
-            const armrest2 = new THREE.Mesh(
-                new THREE.BoxGeometry(0.1, 0.3, 0.6),
-                legMaterial
-            );
-            armrest2.position.set(0.95, 0.65, 0);
-            bench.add(armrest2);
-
-            bench.userData.objectType = 'bench';
-            return bench;
+        if (isHorizontal) {
+            railMesh.position.set(0, railHeight, posOffset);
+        } else {
+            railMesh.position.set(posOffset, railHeight, 0);
         }
 
-        // Optimized chunk update for infinite world
-        function updateVisibleChunks() {
-            if (!character?.isLoaded) return;
+        railMesh.castShadow = true;
+        railMesh.receiveShadow = true;
+        fenceGroup.add(railMesh);
+    }
 
-            const { x, z } = getChunkCoords(character.position.x, character.position.z);
-            const dx = Math.abs(character.position.x - lastChunkUpdatePosition.x);
-            const dz = Math.abs(character.position.z - lastChunkUpdatePosition.z);
+    chunkGroup.add(fenceGroup);
+    
+    // Register fence in object registry with its bounds
+    objectRegistry.push({
+        type: 'fence',
+        subType: 'wooden',
+        worldX: (chunkX * chunkSize) + (isHorizontal ? 0 : posOffset),
+        worldZ: (chunkZ * chunkSize) + (isHorizontal ? posOffset : 0),
+        localX: isHorizontal ? 0 : posOffset,
+        localZ: isHorizontal ? posOffset : 0,
+        isHorizontal: isHorizontal,
+        length: fenceLength
+    });
 
-            // Force update on first load or when moved significantly
-            const shouldUpdate = activeChunks.size === 0 || dx > updateThreshold || dz > updateThreshold;
+    // Add multiple points along the fence to ensure other objects don't spawn on it
+    for (let i = 0; i < 5; i++) {
+        const fenceX = isHorizontal ? (i / 4) * fenceLength - fenceLength / 2 : posOffset;
+        const fenceZ = isHorizontal ? posOffset : (i / 4) * fenceLength - fenceLength / 2;
+        objectPositions.push({ x: fenceX, z: fenceZ, type: 'fence' });
+    }
+}
 
-            if (!shouldUpdate) return;
+// NEW: Create a path sign
+function createPathSign(randomSeed) {
+    const sign = new THREE.Group();
+    
+    // Create post
+    const postGeometry = new THREE.CylinderGeometry(0.1, 0.1, 2, 6);
+    const post = new THREE.Mesh(postGeometry, woodMaterial.clone());
+    post.position.y = 1;
+    post.castShadow = true;
+    post.receiveShadow = true;
+    sign.add(post);
+    
+    // Create sign board
+    const boardGeometry = new THREE.BoxGeometry(1.2, 0.8, 0.1);
+    const boardMaterial = woodMaterial.clone();
+    boardMaterial.color.setHex(0x8B4513);
+    const board = new THREE.Mesh(boardGeometry, boardMaterial);
+    board.position.y = 1.7;
+    board.castShadow = true;
+    board.receiveShadow = true;
+    sign.add(board);
+    
+    // Randomly rotate the sign
+    sign.rotation.y = randomSeed * Math.PI * 2;
+    sign.userData.objectType = 'landmark';
+    sign.userData.subType = 'pathSign';
+    
+    return sign;
+}
 
-            lastChunkUpdatePosition = { x: character.position.x, z: character.position.z };
+// NEW: Create a statue
+function createStatue(randomSeed) {
+    const statue = new THREE.Group();
+    
+    // Create base
+    const baseGeometry = new THREE.BoxGeometry(1.5, 0.5, 1.5);
+    const baseMaterial = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.8 });
+    const base = new THREE.Mesh(baseGeometry, baseMaterial);
+    base.position.y = 0.25;
+    base.castShadow = true;
+    base.receiveShadow = true;
+    statue.add(base);
+    
+    // Create statue body
+    const bodyGeometry = new THREE.CylinderGeometry(0.3, 0.3, 2, 8);
+    const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0xaaaaaa, roughness: 0.6 });
+    const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+    body.position.y = 1.5;
+    body.castShadow = true;
+    body.receiveShadow = true;
+    statue.add(body);
+    
+    // Create statue head
+    const headGeometry = new THREE.SphereGeometry(0.4, 8, 8);
+    const head = new THREE.Mesh(headGeometry, bodyMaterial);
+    head.position.y = 2.7;
+    head.castShadow = true;
+    head.receiveShadow = true;
+    statue.add(head);
+    
+    statue.userData.objectType = 'landmark';
+    statue.userData.subType = 'statue';
+    
+    return statue;
+}
 
-            console.log("Updating chunks at", x, z);
+// NEW: Create a well
+function createWell(randomSeed) {
+    const well = new THREE.Group();
+    
+    // Create well base (cylinder)
+    const baseGeometry = new THREE.CylinderGeometry(1.2, 1.2, 1, 12);
+    const stoneMaterial = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.9 });
+    const base = new THREE.Mesh(baseGeometry, stoneMaterial);
+    base.position.y = 0.5;
+    base.castShadow = true;
+    base.receiveShadow = true;
+    well.add(base);
+    
+    // Create well interior (darker cylinder)
+    const interiorGeometry = new THREE.CylinderGeometry(0.9, 0.9, 1.1, 12);
+    const interiorMaterial = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 1.0 });
+    const interior = new THREE.Mesh(interiorGeometry, interiorMaterial);
+    interior.position.y = 0.5;
+    well.add(interior);
+    
+    // Create roof supports
+    const supportGeometry = new THREE.BoxGeometry(0.2, 1.5, 0.2);
+    const woodMat = woodMaterial.clone();
+    
+    const support1 = new THREE.Mesh(supportGeometry, woodMat);
+    support1.position.set(1.1, 1.25, 0);
+    support1.castShadow = true;
+    support1.receiveShadow = true;
+    well.add(support1);
+    
+    const support2 = new THREE.Mesh(supportGeometry, woodMat);
+    support2.position.set(-1.1, 1.25, 0);
+    support2.castShadow = true;
+    support2.receiveShadow = true;
+    well.add(support2);
+    
+    // Create roof
+    const roofGeometry = new THREE.ConeGeometry(1.5, 0.8, 4);
+    const roofMaterial = new THREE.MeshStandardMaterial({ color: 0x8B4513, roughness: 0.9 });
+    const roof = new THREE.Mesh(roofGeometry, roofMaterial);
+    roof.position.y = 2.4;
+    roof.rotation.y = Math.PI / 4;
+    roof.castShadow = true;
+    roof.receiveShadow = true;
+    well.add(roof);
+    
+    // Create horizontal beam
+    const beamGeometry = new THREE.CylinderGeometry(0.1, 0.1, 2.6, 6);
+    const beam = new THREE.Mesh(beamGeometry, woodMat);
+    beam.rotation.z = Math.PI / 2;
+    beam.position.y = 2;
+    beam.castShadow = true;
+    beam.receiveShadow = true;
+    well.add(beam);
+    
+    // Create rope
+    const ropeGeometry = new THREE.CylinderGeometry(0.05, 0.05, 1, 6);
+    const ropeMaterial = new THREE.MeshStandardMaterial({ color: 0x8B4513, roughness: 1.0 });
+    const rope = new THREE.Mesh(ropeGeometry, ropeMaterial);
+    rope.position.y = 1.5;
+    rope.castShadow = true;
+    well.add(rope);
+    
+    // Create bucket
+    const bucketGeometry = new THREE.CylinderGeometry(0.2, 0.15, 0.3, 8);
+    const bucketMaterial = woodMat.clone();
+    bucketMaterial.color.setHex(0x5d3a1a);
+    const bucket = new THREE.Mesh(bucketGeometry, bucketMaterial);
+    bucket.position.y = 1;
+    bucket.castShadow = true;
+    bucket.receiveShadow = true;
+    well.add(bucket);
+    
+    well.userData.objectType = 'landmark';
+    well.userData.subType = 'well';
+    
+    return well;
+}
 
-            // Load nearby chunks
-            for (let offsetX = -chunksVisibleInViewDistance; offsetX <= chunksVisibleInViewDistance; offsetX++) {
-                for (let offsetZ = -chunksVisibleInViewDistance; offsetZ <= chunksVisibleInViewDistance; offsetZ++) {
-                    createTerrainChunk(x + offsetX, z + offsetZ);
+function createWildlife(randomSeed) {
+    const wildlife = new THREE.Group();
+    const type = randomSeed < 0.33 ? 'deer' : (randomSeed < 0.66 ? 'rabbit' : 'fox');
+    
+    let color, bodySize, bodyHeight, legHeight;
+    
+    switch(type) {
+        case 'deer':
+            color = 0x8B4513;
+            bodySize = 0.8;
+            bodyHeight = 1.2;
+            legHeight = 1;
+            break;
+        case 'rabbit':
+            color = 0xCCCCCC;
+            bodySize = 0.3;
+            bodyHeight = 0.3;
+            legHeight = 0.2;
+            break;
+        case 'fox':
+            color = 0xD2691E;
+            bodySize = 0.5;
+            bodyHeight = 0.4;
+            legHeight = 0.4;
+            break;
+    }
+    
+    // Create body
+    const bodyMaterial = new THREE.MeshStandardMaterial({ color: color, roughness: 0.9 });
+    const bodyGeometry = new THREE.SphereGeometry(bodySize, 8, 8);
+    bodyGeometry.scale(1, 0.6, 1.5);
+    const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+    body.position.y = bodyHeight;
+    body.castShadow = true;
+    body.receiveShadow = true;
+    wildlife.add(body);
+    
+    // Create head
+    const headGeometry = new THREE.SphereGeometry(bodySize * 0.6, 8, 8);
+    const head = new THREE.Mesh(headGeometry, bodyMaterial);
+    head.position.set(0, bodyHeight + bodySize * 0.3, bodySize);
+    head.castShadow = true;
+    head.receiveShadow = true;
+    wildlife.add(head);
+    
+    // Create legs
+    const legGeometry = new THREE.CylinderGeometry(0.1, 0.1, legHeight, 4);
+    
+    for (let i = 0; i < 4; i++) {
+        const leg = new THREE.Mesh(legGeometry, bodyMaterial);
+        const xPos = ((i % 2) * 2 - 1) * bodySize * 0.5;
+        const zPos = (Math.floor(i / 2) * 2 - 1) * bodySize * 0.7;
+        
+        leg.position.set(xPos, legHeight/2, zPos);
+        leg.castShadow = true;
+        leg.receiveShadow = true;
+        wildlife.add(leg);
+    }
+    
+    // Add tail for fox and deer
+    if (type !== 'rabbit') {
+        const tailGeometry = new THREE.SphereGeometry(bodySize * 0.3, 8, 8);
+        tailGeometry.scale(0.7, 0.7, 1);
+        const tail = new THREE.Mesh(tailGeometry, bodyMaterial);
+        tail.position.set(0, bodyHeight, -bodySize);
+        tail.castShadow = true;
+        tail.receiveShadow = true;
+        wildlife.add(tail);
+    }
+    
+    // Add ears
+    if (type === 'rabbit') {
+        for (let i = 0; i < 2; i++) {
+            const earGeometry = new THREE.CylinderGeometry(0.05, 0.05, 0.4, 4);
+            const ear = new THREE.Mesh(earGeometry, bodyMaterial);
+            ear.position.set((i * 2 - 1) * 0.15, bodyHeight + 0.4, bodySize + 0.1);
+            ear.castShadow = true;
+            ear.receiveShadow = true;
+            wildlife.add(ear);
+        }
+    }
+    
+    // Add antlers for deer
+    if (type === 'deer') {
+        for (let i = 0; i < 2; i++) {
+            const antlerGroup = new THREE.Group();
+            
+            const mainAntler = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.05, 0.05, 0.6, 4),
+                bodyMaterial
+            );
+            mainAntler.position.y = 0.3;
+            mainAntler.rotation.z = (i * 2 - 1) * Math.PI / 6;
+            antlerGroup.add(mainAntler);
+            
+            const branchAntler = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.03, 0.03, 0.4, 4),
+                bodyMaterial
+            );
+            branchAntler.position.set(0, 0.4, 0);
+            branchAntler.rotation.z = Math.PI / 4;
+            antlerGroup.add(branchAntler);
+            
+            antlerGroup.position.set((i * 2 - 1) * 0.2, bodyHeight + 0.6, bodySize + 0.1);
+            wildlife.add(antlerGroup);
+        }
+    }
+    
+    // Randomly rotate the wildlife
+    wildlife.rotation.y = randomSeed * Math.PI * 2;
+    wildlife.userData.objectType = 'wildlife';
+    wildlife.userData.subType = type;
+    
+    return wildlife;
+}
+
+// NEW: Create flower patch
+function createFlowerPatch(randomSeed) {
+    const flowerPatch = new THREE.Group();
+    const flowerCount = 5 + Math.floor(randomSeed * 10);
+    const patchRadius = 1 + randomSeed * 0.5;
+    
+    // Create ground patch
+    const groundGeometry = new THREE.CircleGeometry(patchRadius, 8);
+    const groundMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0x7CFC00, 
+        roughness: 0.9 
+    });
+    const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = 0.01; // Slightly above ground to prevent z-fighting
+    flowerPatch.add(ground);
+    
+    // Create flowers
+    const flowerColors = [0xFF5555, 0xFFFF55, 0xFF55FF, 0x55FFFF, 0xFFFFFF];
+    
+    for (let i = 0; i < flowerCount; i++) {
+        const angle = (i / flowerCount) * Math.PI * 2 + randomSeed;
+        const distance = randomSeed * patchRadius * 0.8;
+        
+        const flowerGroup = new THREE.Group();
+        
+        // Stem
+        const stemGeometry = new THREE.CylinderGeometry(0.02, 0.02, 0.3, 4);
+        const stemMaterial = new THREE.MeshStandardMaterial({ color: 0x00AA00, roughness: 0.8 });
+        const stem = new THREE.Mesh(stemGeometry, stemMaterial);
+        stem.position.y = 0.15;
+        flowerGroup.add(stem);
+        
+        // Flower head
+        const flowerGeometry = new THREE.SphereGeometry(0.1, 8, 8);
+        const flowerMaterial = new THREE.MeshStandardMaterial({ 
+            color: flowerColors[Math.floor(randomSeed * i * 10) % flowerColors.length], 
+            roughness: 0.8 
+        });
+        const flower = new THREE.Mesh(flowerGeometry, flowerMaterial);
+        flower.position.y = 0.35;
+        flowerGroup.add(flower);
+        
+        flowerGroup.position.set(
+            Math.cos(angle) * distance,
+            0,
+            Math.sin(angle) * distance
+        );
+        
+        flowerPatch.add(flowerGroup);
+    }
+    
+    flowerPatch.userData.objectType = 'seasonal';
+    flowerPatch.userData.subType = 'flowers';
+    
+    return flowerPatch;
+}
+
+// NEW: Create beehive
+function createBeehive(randomSeed) {
+    const beehive = new THREE.Group();
+    
+    // Create tree stump base
+    const stumpGeometry = new THREE.CylinderGeometry(0.5, 0.6, 1.2, 8);
+    const stumpMaterial = new THREE.MeshStandardMaterial({ color: 0x8B4513, roughness: 0.9 });
+    const stump = new THREE.Mesh(stumpGeometry, stumpMaterial);
+    stump.position.y = 0.6;
+    stump.castShadow = true;
+    stump.receiveShadow = true;
+    beehive.add(stump);
+    
+    // Create hollow in stump
+    const hollowGeometry = new THREE.CylinderGeometry(0.3, 0.3, 0.8, 8);
+    const hollowMaterial = new THREE.MeshStandardMaterial({ color: 0x3D2817, roughness: 1.0 });
+    const hollow = new THREE.Mesh(hollowGeometry, hollowMaterial);
+    hollow.position.y = 0.7;
+    beehive.add(hollow);
+    
+    // Create bees (small particles around the hive)
+    const beeCount = 5 + Math.floor(randomSeed * 5);
+    const beeGeometry = new THREE.SphereGeometry(0.05, 4, 4);
+    const beeMaterial = new THREE.MeshStandardMaterial({ color: 0xFFD700, roughness: 0.5 });
+    
+    for (let i = 0; i < beeCount; i++) {
+        const bee = new THREE.Mesh(beeGeometry, beeMaterial);
+        const angle = (i / beeCount) * Math.PI * 2;
+        const height = 0.5 + randomSeed * 1.5;
+        const radius = 0.5 + randomSeed * 0.5;
+        
+        bee.position.set(
+            Math.cos(angle) * radius,
+            height,
+            Math.sin(angle) * radius
+        );
+        
+        beehive.add(bee);
+    }
+    
+    // Add some honey dripping
+    const honeyGeometry = new THREE.CylinderGeometry(0.1, 0.05, 0.3, 6);
+    const honeyMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0xFFD700, 
+        roughness: 0.3,
+        transparent: true,
+        opacity: 0.8
+    });
+    const honey = new THREE.Mesh(honeyGeometry, honeyMaterial);
+    honey.position.set(0.2, 0.5, 0.3);
+    beehive.add(honey);
+    
+    beehive.userData.objectType = 'seasonal';
+    beehive.userData.subType = 'beehive';
+    
+    return beehive;
+}
+
+// NEW: Create mushrooms
+function createMushrooms(randomSeed) {
+    const mushroomPatch = new THREE.Group();
+    const mushroomCount = 3 + Math.floor(randomSeed * 7);
+    const patchRadius = 1 + randomSeed * 0.5;
+    
+    // Create ground patch (darker soil)
+    const groundGeometry = new THREE.CircleGeometry(patchRadius, 8);
+    const groundMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0x5C4033, 
+        roughness: 0.9 
+    });
+    const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = 0.01; // Slightly above ground to prevent z-fighting
+    mushroomPatch.add(ground);
+    
+    // Create fallen leaves
+    const leafCount = 5 + Math.floor(randomSeed * 10);
+    const leafColors = [0xCD5C5C, 0xFFA500, 0xFFD700, 0x8B4513];
+    
+    for (let i = 0; i < leafCount; i++) {
+        const leafGeometry = new THREE.CircleGeometry(0.1 + randomSeed * 0.1, 5);
+        const leafMaterial = new THREE.MeshStandardMaterial({ 
+            color: leafColors[Math.floor(randomSeed * i) % leafColors.length], 
+            roughness: 0.8,
+            side: THREE.DoubleSide
+        });
+        const leaf = new THREE.Mesh(leafGeometry, leafMaterial);
+        
+        const angle = (i / leafCount) * Math.PI * 2 + randomSeed;
+        const distance = randomSeed * patchRadius * 0.9;
+        
+        leaf.position.set(
+            Math.cos(angle) * distance,
+            0.02, // Just above ground
+            Math.sin(angle) * distance
+        );
+        
+        leaf.rotation.x = -Math.PI / 2;
+        leaf.rotation.z = randomSeed * Math.PI * 2;
+        
+        mushroomPatch.add(leaf);
+    }
+    
+    // Create mushrooms
+    for (let i = 0; i < mushroomCount; i++) {
+        const mushroomGroup = new THREE.Group();
+        
+        // Determine mushroom type
+        const mushroomType = randomSeed * i < 0.3 ? 'red' : 'brown';
+        let capColor, stemColor;
+        
+        if (mushroomType === 'red') {
+            capColor = 0xFF0000;
+            stemColor = 0xFFFFFF;
+        } else {
+            capColor = 0x8B4513;
+            stemColor = 0xDCDCDC;
+        }
+        
+        // Stem
+        const stemHeight = 0.1 + randomSeed * 0.2;
+        const stemGeometry = new THREE.CylinderGeometry(0.05, 0.07, stemHeight, 8);
+        const stemMaterial = new THREE.MeshStandardMaterial({ color: stemColor, roughness: 0.8 });
+        const stem = new THREE.Mesh(stemGeometry, stemMaterial);
+        stem.position.y = stemHeight / 2;
+        mushroomGroup.add(stem);
+        
+        // Cap
+        const capSize = 0.1 + randomSeed * 0.15;
+        const capGeometry = new THREE.SphereGeometry(capSize, 8, 8);
+        capGeometry.scale(1, 0.5, 1);
+        const capMaterial = new THREE.MeshStandardMaterial({ color: capColor, roughness: 0.8 });
+        const cap = new THREE.Mesh(capGeometry, capMaterial);
+        cap.position.y = stemHeight;
+        mushroomGroup.add(cap);
+        
+        // Position mushroom in patch
+        const angle = (i / mushroomCount) * Math.PI * 2 + randomSeed;
+        const distance = randomSeed * patchRadius * 0.7;
+        
+        mushroomGroup.position.set(
+            Math.cos(angle) * distance,
+            0,
+            Math.sin(angle) * distance
+        );
+        
+        mushroomGroup.rotation.y = randomSeed * Math.PI * 2;
+        mushroomPatch.add(mushroomGroup);
+    }
+    
+    mushroomPatch.userData.objectType = 'seasonal';
+    mushroomPatch.userData.subType = 'mushrooms';
+    
+    return mushroomPatch;
+}
+
+// NEW: Create snowman
+function createSnowman(randomSeed) {
+    const snowman = new THREE.Group();
+    
+    // Create three snow balls of decreasing size
+    const snowMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0xFFFFFF, 
+        roughness: 0.8 
+    });
+    
+    // Bottom ball (largest)
+    const bottomGeometry = new THREE.SphereGeometry(0.7, 12, 12);
+    const bottomBall = new THREE.Mesh(bottomGeometry, snowMaterial);
+    bottomBall.position.y = 0.7;
+    bottomBall.castShadow = true;
+    bottomBall.receiveShadow = true;
+    snowman.add(bottomBall);
+    
+    // Middle ball
+    const middleGeometry = new THREE.SphereGeometry(0.5, 12, 12);
+    const middleBall = new THREE.Mesh(middleGeometry, snowMaterial);
+    middleBall.position.y = 1.7;
+    middleBall.castShadow = true;
+    middleBall.receiveShadow = true;
+    snowman.add(middleBall);
+    
+    // Top ball (head)
+    const topGeometry = new THREE.SphereGeometry(0.3, 12, 12);
+    const topBall = new THREE.Mesh(topGeometry, snowMaterial);
+    topBall.position.y = 2.4;
+    topBall.castShadow = true;
+    topBall.receiveShadow = true;
+    snowman.add(topBall);
+    
+    // Add coal eyes
+    const eyeMaterial = new THREE.MeshStandardMaterial({ color: 0x000000, roughness: 1.0 });
+    
+    for (let i = 0; i < 2; i++) {
+        const eye = new THREE.Mesh(
+            new THREE.SphereGeometry(0.05, 6, 6),
+            eyeMaterial
+        );
+        eye.position.set((i * 2 - 1) * 0.15, 2.45, 0.25);
+        snowman.add(eye);
+    }
+    
+    // Add carrot nose
+    const noseMaterial = new THREE.MeshStandardMaterial({ color: 0xFF8C00, roughness: 0.8 });
+    const nose = new THREE.Mesh(
+        new THREE.ConeGeometry(0.05, 0.3, 8),
+        noseMaterial
+    );
+    nose.rotation.x = Math.PI / 2;
+    nose.position.set(0, 2.4, 0.3);
+    snowman.add(nose);
+    
+    // Add coal buttons
+    for (let i = 0; i < 3; i++) {
+        const button = new THREE.Mesh(
+            new THREE.SphereGeometry(0.05, 6, 6),
+            eyeMaterial
+        );
+        button.position.set(0, 1.7 - i * 0.2, 0.5);
+        snowman.add(button);
+    }
+    
+    // Add stick arms
+    const armMaterial = new THREE.MeshStandardMaterial({ color: 0x8B4513, roughness: 1.0 });
+    
+    for (let i = 0; i < 2; i++) {
+        const arm = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.03, 0.03, 0.8, 4),
+            armMaterial
+        );
+        arm.rotation.z = (i * 2 - 1) * Math.PI / 4;
+        arm.rotation.y = (i * 2 - 1) * Math.PI / 6;
+        arm.position.set((i * 2 - 1) * 0.3, 1.8, 0);
+        snowman.add(arm);
+    }
+    
+    // Add hat
+    const hatGroup = new THREE.Group();
+    
+    // Hat brim
+    const brim = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.4, 0.4, 0.05, 16),
+        eyeMaterial
+    );
+    hatGroup.add(brim);
+    
+    // Hat top
+    const hatTop = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.3, 0.3, 0.3, 16),
+        eyeMaterial
+    );
+    hatTop.position.y = 0.175;
+    hatGroup.add(hatTop);
+    
+    hatGroup.position.y = 2.7;
+    snowman.add(hatGroup);
+    
+    // Add a small snow pile at the base
+    const snowPile = new THREE.Mesh(
+        new THREE.CircleGeometry(1.2, 16),
+        snowMaterial
+    );
+    snowPile.rotation.x = -Math.PI / 2;
+    snowPile.position.y = 0.02; // Just above ground
+    snowman.add(snowPile);
+    
+    snowman.userData.objectType = 'seasonal';
+    snowman.userData.subType = 'snowman';
+    
+    return snowman;
+}
+
+// ENHANCED: Significantly improved text map generation for LLM understanding
+function generateTextMap(characterPosition) {
+    const gridSize = 15; // Larger grid for better context (15x15)
+    const cellSize = 5; // Smaller cells for more precision (5x5 units)
+
+    // Calculate grid boundaries
+    const centerX = Math.floor(characterPosition.x / cellSize);
+    const centerZ = Math.floor(characterPosition.z / cellSize);
+    const startX = centerX - Math.floor(gridSize / 2);
+    const startZ = centerZ - Math.floor(gridSize / 2);
+
+    // Get character's facing direction
+    const facingAngle = character.rotation;
+    let directionSymbol = "↓"; // Using clearer Unicode arrows
+    let directionName = "South";
+
+    // Convert rotation angle to cardinal direction symbol
+    if (facingAngle >= -Math.PI / 4 && facingAngle < Math.PI / 4) {
+        directionSymbol = "↓"; // South (flipped from North)
+        directionName = "South";
+    } else if (facingAngle >= Math.PI / 4 && facingAngle < 3 * Math.PI / 4) {
+        directionSymbol = "→"; // East
+        directionName = "East";
+    } else if (facingAngle >= 3 * Math.PI / 4 || facingAngle < -3 * Math.PI / 4) {
+        directionSymbol = "↑"; // North (flipped from South)
+        directionName = "North";
+    } else if (facingAngle >= -3 * Math.PI / 4 && facingAngle < -Math.PI / 4) {
+        directionSymbol = "←"; // West
+        directionName = "West";
+    }
+
+    // Initialize object detection map
+    const objectMap = new Map();
+    const objectDetails = [];
+    
+    // Scan all loaded chunks for objects
+    for (const [chunkKey, chunk] of loadedChunks.entries()) {
+        if (chunk.userData.objectRegistry) {
+            for (const obj of chunk.userData.objectRegistry) {
+                // Calculate grid cell for this object
+                const objCellX = Math.floor(obj.worldX / cellSize);
+                const objCellZ = Math.floor(obj.worldZ / cellSize);
+                
+                // Check if object is within our map bounds
+                if (objCellX >= startX && objCellX < startX + gridSize &&
+                    objCellZ >= startZ && objCellZ < startZ + gridSize) {
+                    
+                    const cellKey = `${objCellX},${objCellZ}`;
+                    
+                    // Store object in our map
+                    if (!objectMap.has(cellKey)) {
+                        objectMap.set(cellKey, []);
+                    }
+                    objectMap.get(cellKey).push(obj);
+                    
+                    // Add to detailed object list
+                    objectDetails.push({
+                        type: obj.type,
+                        subType: obj.subType,
+                        x: obj.worldX,
+                        z: obj.worldZ,
+                        gridX: objCellX - startX,
+                        gridZ: objCellZ - startZ,
+                        distance: Math.sqrt(
+                            Math.pow(obj.worldX - characterPosition.x, 2) +
+                            Math.pow(obj.worldZ - characterPosition.z, 2)
+                        ).toFixed(1)
+                    });
+                }
+            }
+        }
+    }
+
+    let textMap = "";
+
+    // Add detailed header with position, facing direction, and time
+    textMap += `=== WOODED TOWN EXPLORATION MAP ===\n\n`;
+    textMap += `COORDINATES: X:${Math.round(characterPosition.x)}, Z:${Math.round(characterPosition.z)}\n`;
+    textMap += `FACING: ${directionName} ${directionSymbol}\n`;
+    textMap += `TIME: Night | WEATHER: Clear, Starry Sky with Moon\n`;
+    textMap += `SEASON: ${window.currentSeason || 'Summer'}\n\n`;
+
+    // Generate the grid with Unicode box-drawing characters for clearer boundaries
+    textMap += "┌";
+    for (let x = 0; x < gridSize; x++) {
+        textMap += "───";
+        if (x < gridSize - 1) textMap += "┬";
+    }
+    textMap += "┐\n";
+
+    // Generate the grid
+    for (let z = 0; z < gridSize; z++) {
+        const worldZ = (startZ + z) * cellSize;
+        textMap += "│";
+
+        for (let x = 0; x < gridSize; x++) {
+            const worldX = (startX + x) * cellSize;
+            const cellKey = `${startX + x},${startZ + z}`;
+
+            // Determine what's at this grid cell
+            let cellChar = " ";
+            let cellObjects = objectMap.get(cellKey) || [];
+
+            // Check if this is the character's position
+            if (Math.floor(characterPosition.x / cellSize) === startX + x &&
+                Math.floor(characterPosition.z / cellSize) === startZ + z) {
+                cellChar = directionSymbol; // Use direction symbol
+            }
+            // Check if this is the platform position (at x=10, z=10)
+            else if (worldX >= 5 && worldX <= 15 && worldZ >= 5 && worldZ <= 15) {
+                cellChar = "P"; // Platform
+            }
+            // Check for environment objects based on cell objects
+            else if (cellObjects.length > 0) {
+                // Prioritize objects by type
+                const priorityOrder = ['house', 'landmark', 'water', 'wildlife', 'tree', 'rock', 'fence', 'path', 'seasonal', 'furniture'];
+                
+                // Sort objects by priority
+                cellObjects.sort((a, b) => {
+                    return priorityOrder.indexOf(a.type) - priorityOrder.indexOf(b.type);
+                });
+                
+                const topObject = cellObjects[0];
+                
+                // Set cell character based on object type
+                switch (topObject.type) {
+                    case 'house':
+                        cellChar = "H";
+                        break;
+                    case 'tree':
+                        cellChar = "T";
+                        break;
+                    case 'water':
+                        cellChar = "W";
+                        break;
+                    case 'rock':
+                        cellChar = "R";
+                        break;
+                    case 'furniture':
+                        cellChar = "B"; // Bench
+                        break;
+                    case 'fence':
+                        cellChar = "F";
+                        break;
+                    case 'path':
+                        cellChar = "·"; // Using middle dot for better visibility
+                        break;
+                    case 'landmark':
+                        if (topObject.subType === 'well') cellChar = "O";
+                        else if (topObject.subType === 'statue') cellChar = "S";
+                        else if (topObject.subType === 'pathSign') cellChar = "†";
+                        break;
+                    case 'wildlife':
+                        if (topObject.subType === 'deer') cellChar = "D";
+                        else if (topObject.subType === 'rabbit') cellChar = "r";
+                        else if (topObject.subType === 'fox') cellChar = "f";
+                        break;
+                    case 'seasonal':
+                        if (topObject.subType === 'flowers') cellChar = "*";
+                        else if (topObject.subType === 'beehive') cellChar = "b";
+                        else if (topObject.subType === 'mushrooms') cellChar = "m";
+                        else if (topObject.subType === 'snowman') cellChar = "☃"; // Unicode snowman
+                        break;
                 }
             }
 
-            // Unload distant chunks to keep scene lightweight
-            for (const [key, chunk] of loadedChunks.entries()) {
-                const [chunkX, chunkZ] = key.split(',').map(Number);
-                const distance = Math.max(Math.abs(x - chunkX), Math.abs(z - chunkZ));
-                if (distance > chunksVisibleInViewDistance + 1) {
-                    scene.remove(chunk);
-                    loadedChunks.delete(key);
-                    activeChunks.delete(key);
-                }
-            }
+            textMap += " " + cellChar + " ";
+            if (x < gridSize - 1) textMap += "│";
         }
+        textMap += "│\n";
 
-        // Function to generate a text-based grid map with enhanced information
-        function generateTextMap(characterPosition) {
-            const gridSize = 9; // 9x9 grid centered on character
-            const cellSize = 10; // Each cell represents 10x10 units in the 3D world
-
-            // Calculate grid boundaries
-            const centerX = Math.floor(characterPosition.x / cellSize);
-            const centerZ = Math.floor(characterPosition.z / cellSize);
-            const startX = centerX - Math.floor(gridSize / 2);
-            const startZ = centerZ - Math.floor(gridSize / 2);
-
-            // Get character's facing direction
-            const facingAngle = character.rotation;
-            let directionSymbol = "^"; // Default north - using simpler symbols
-            let directionName = "North";
-
-            // Convert rotation angle to cardinal direction symbol
-            if (facingAngle >= -Math.PI / 4 && facingAngle < Math.PI / 4) {
-                directionSymbol = "^"; // North
-                directionName = "North";
-            } else if (facingAngle >= Math.PI / 4 && facingAngle < 3 * Math.PI / 4) {
-                directionSymbol = ">"; // East
-                directionName = "East";
-            } else if (facingAngle >= 3 * Math.PI / 4 || facingAngle < -3 * Math.PI / 4) {
-                directionSymbol = "v"; // South
-                directionName = "South";
-            } else if (facingAngle >= -3 * Math.PI / 4 && facingAngle < -Math.PI / 4) {
-                directionSymbol = "<"; // West
-                directionName = "West";
-            }
-
-            let textMap = "";
-
-            // Add simple header with position and facing direction
-            textMap += `POSITION: X:${Math.round(characterPosition.x)}, Z:${Math.round(characterPosition.z)} | FACING: ${directionName}\n\n`;
-
-            // Generate the grid with simpler ASCII characters
-            textMap += "+";
+        // Add row separator except for the last row
+        if (z < gridSize - 1) {
+            textMap += "├";
             for (let x = 0; x < gridSize; x++) {
-                textMap += "---+";
+                textMap += "───";
+                if (x < gridSize - 1) textMap += "┼";
             }
-            textMap += "\n";
-
-            // Generate the grid
-            for (let z = 0; z < gridSize; z++) {
-                const worldZ = (startZ + z) * cellSize;
-                textMap += "|";
-
-                for (let x = 0; x < gridSize; x++) {
-                    const worldX = (startX + x) * cellSize;
-
-                    // Determine what's at this grid cell
-                    let cellChar = " ";
-
-                    // Check if this is the character's position
-                    if (Math.floor(characterPosition.x / cellSize) === startX + x &&
-                        Math.floor(characterPosition.z / cellSize) === startZ + z) {
-                        cellChar = directionSymbol; // Use direction symbol
-                    }
-                    // Check if this is the platform position (at x=10, z=10)
-                    else if (worldX >= 5 && worldX <= 15 && worldZ >= 5 && worldZ <= 15) {
-                        cellChar = "P"; // Platform
-                    }
-                    // Check for environment features based on world coordinates
-                    else {
-                        // Check for objects in loaded chunks
-                        let foundObject = false;
-
-                        // Get the chunk coordinates for this world position
-                        const chunkX = Math.floor(worldX / chunkSize);
-                        const chunkZ = Math.floor(worldZ / chunkSize);
-                        const chunkKey = getChunkKey(chunkX, chunkZ);
-
-                        if (loadedChunks.has(chunkKey)) {
-                            const chunk = loadedChunks.get(chunkKey);
-
-                            // Calculate position within chunk
-                            const localX = worldX - chunkX * chunkSize;
-                            const localZ = worldZ - chunkZ * chunkSize;
-
-                            // Check for objects in this chunk
-                            chunk.traverse(object => {
-                                if (foundObject) return; // Skip if we already found something
-
-                                if (object.userData && object.userData.objectType) {
-                                    // Get object position in world coordinates
-                                    const objWorldPos = new THREE.Vector3();
-                                    object.getWorldPosition(objWorldPos);
-
-                                    // Check if object is within this cell
-                                    const objCellX = Math.floor(objWorldPos.x / cellSize);
-                                    const objCellZ = Math.floor(objWorldPos.z / cellSize);
-
-                                    if (objCellX === startX + x && objCellZ === startZ + z) {
-                                        // Set cell character based on object type
-                                        switch (object.userData.objectType) {
-                                            case 'tree':
-                                                cellChar = "T";
-                                                break;
-                                            case 'cabin':
-                                            case 'cottage':
-                                            case 'manor':
-                                                cellChar = "H";
-                                                break;
-                                            case 'pond':
-                                                cellChar = "W";
-                                                break;
-                                            case 'rock':
-                                                cellChar = "R";
-                                                break;
-                                            case 'bench':
-                                                cellChar = "B";
-                                                break;
-                                            case 'fence':
-                                                cellChar = "F";
-                                                break;
-                                            case 'path':
-                                                cellChar = ".";
-                                                break;
-                                        }
-                                        foundObject = true;
-                                    }
-                                }
-                            });
-                        }
-
-                        // If no specific object found, use procedural generation to determine what's here
-                        if (!foundObject) {
-                            const seed = Math.abs(worldX * 10000 + worldZ);
-                            const pseudoRandom = (seed * 9301 + 49297) % 233280 / 233280;
-
-                            if (pseudoRandom < 0.03) {
-                                cellChar = "H"; // House
-                            } else if (pseudoRandom < 0.20) {
-                                cellChar = "T"; // Tree (higher probability for wooded feel)
-                            } else if (pseudoRandom < 0.22) {
-                                cellChar = "W"; // Pond/Water
-                            } else if (pseudoRandom < 0.25) {
-                                cellChar = "R"; // Rock
-                            } else if (pseudoRandom < 0.27) {
-                                cellChar = "B"; // Bench
-                            } else if (pseudoRandom < 0.30) {
-                                cellChar = "F"; // Fence
-                            } else if (pseudoRandom < 0.35) {
-                                cellChar = "."; // Path
-                            }
-                        }
-                    }
-
-                    textMap += " " + cellChar + " |";
-                }
-                textMap += "\n+";
-
-                for (let x = 0; x < gridSize; x++) {
-                    textMap += "---+";
-                }
-                textMap += "\n";
-            }
-
-            // Add simple compass
-            textMap += "\n  N  \n";
-            textMap += "W + E\n";
-            textMap += "  S  \n";
-
-            // Add detailed legend
-            textMap += "\nLegend:\n";
-            textMap += `${directionSymbol} = You (facing ${directionName})\n`;
-            textMap += "P = Wooden Platform (at coordinates 10,10)\n";
-            textMap += "H = House (Cabin, Cottage, or Manor)\n";
-            textMap += "T = Tree (Pine or Deciduous)\n";
-            textMap += "W = Pond with Lily Pads\n";
-            textMap += "R = Large Rock with Moss\n";
-            textMap += "B = Wooden Bench\n";
-            textMap += "F = Wooden Fence\n";
-            textMap += ". = Dirt Path\n";
-            textMap += "  = Open Space\n";
-
-            // Add goal information
-            textMap += "\nGOAL: Explore the infinite wooded town\n";
-
-            // Add distance to platform
-            const distToPlatform = Math.round(Math.sqrt(
-                Math.pow(characterPosition.x - 10, 2) +
-                Math.pow(characterPosition.z - 10, 2)
-            ));
-
-            textMap += `Distance to platform: ${distToPlatform} units\n`;
-
-            // Add simple direction to platform
-            const angleToPlatform = Math.atan2(10 - characterPosition.z, 10 - characterPosition.x);
-            let platformDirection = "";
-
-            if (angleToPlatform >= -Math.PI / 4 && angleToPlatform < Math.PI / 4) {
-                platformDirection = "East";
-            } else if (angleToPlatform >= Math.PI / 4 && angleToPlatform < 3 * Math.PI / 4) {
-                platformDirection = "North";
-            } else if (angleToPlatform >= 3 * Math.PI / 4 || angleToPlatform < -3 * Math.PI / 4) {
-                platformDirection = "West";
-            } else if (angleToPlatform >= -3 * Math.PI / 4 && angleToPlatform < -Math.PI / 4) {
-                platformDirection = "South";
-            }
-
-            textMap += `Platform is to the ${platformDirection} of you\n`;
-
-            // Add time of day information
-            textMap += "\nTime: Night\n";
-            textMap += "Weather: Clear, Starry Sky with Moon\n";
-
-            return textMap;
+            textMap += "┤\n";
         }
+    }
+
+    // Bottom border
+    textMap += "└";
+    for (let x = 0; x < gridSize; x++) {
+        textMap += "───";
+        if (x < gridSize - 1) textMap += "┴";
+    }
+    textMap += "┘\n\n";
+
+    // Add compass with clearer Unicode arrows
+    textMap += "    ↑    \n";
+    textMap += "    N    \n";
+    textMap += "← W   E →\n";
+    textMap += "    S    \n";
+    textMap += "    ↓    \n\n";
+
+    // Add detailed legend with Unicode symbols
+    textMap += "=== LEGEND ===\n";
+    textMap += `${directionSymbol} = You (facing ${directionName})\n`;
+    textMap += "P = Wooden Platform (at coordinates 10,10)\n";
+    textMap += "H = House (Cabin, Cottage, or Manor)\n";
+    textMap += "T = Tree (Pine or Deciduous)\n";
+    textMap += "W = Pond with Lily Pads\n";
+    textMap += "R = Rock (Large with Moss or Small)\n";
+    textMap += "B = Wooden Bench\n";
+    textMap += "F = Wooden Fence\n";
+    textMap += "· = Dirt Path\n";
+    textMap += "O = Stone Well\n";
+    textMap += "S = Statue\n";
+    textMap += "† = Path Sign\n";
+    textMap += "D = Deer\n";
+    textMap += "r = Rabbit\n";
+    textMap += "f = Fox\n";
+    textMap += "* = Flower Patch\n";
+    textMap += "b = Beehive\n";
+    textMap += "m = Mushrooms\n";
+    textMap += "☃ = Snowman\n";
+    textMap += "  = Open Space\n\n";
+
+    // Add nearby objects section with detailed information
+    textMap += "=== NEARBY OBJECTS ===\n";
+    
+    // Sort objects by distance
+    objectDetails.sort((a, b) => parseFloat(a.distance) - parseFloat(b.distance));
+    
+        // List the 10 closest objects with detailed information
+        const nearbyObjects = objectDetails.slice(0, 10);
+    if (nearbyObjects.length === 0) {
+        textMap += "No objects detected nearby.\n";
+    } else {
+        nearbyObjects.forEach((obj, index) => {
+            const objName = getObjectFullName(obj.type, obj.subType);
+            const direction = getDirectionTo(characterPosition, { x: obj.x, z: obj.z });
+            
+            textMap += `${index + 1}. ${objName} - ${obj.distance} units ${direction} of you (at X:${Math.round(obj.x)}, Z:${Math.round(obj.z)})\n`;
+        });
+    }
+    
+    textMap += "\n";
+    
+    // Add collision detection information
+    textMap += "=== COLLISION INFORMATION ===\n";
+    const collisionObjects = objectDetails.filter(obj => 
+        parseFloat(obj.distance) < 3 && 
+        isCollidable(obj.type)
+    );
+    
+    if (collisionObjects.length === 0) {
+        textMap += "No obstacles in your immediate path.\n";
+    } else {
+        textMap += "Obstacles in your path:\n";
+        collisionObjects.forEach((obj, index) => {
+            const objName = getObjectFullName(obj.type, obj.subType);
+            const direction = getDirectionTo(characterPosition, { x: obj.x, z: obj.z });
+            
+            textMap += `${index + 1}. ${objName} - ${obj.distance} units ${direction} of you\n`;
+        });
+    }
+    
+    textMap += "\n";
+
+    // Add goal information and distance to platform
+    textMap += "=== NAVIGATION ===\n";
+    textMap += "GOAL: Explore the infinite wooded town\n";
+
+    // Add distance to platform
+    const distToPlatform = Math.round(Math.sqrt(
+        Math.pow(characterPosition.x - 10, 2) +
+        Math.pow(characterPosition.z - 10, 2)
+    ));
+
+    textMap += `Distance to platform: ${distToPlatform} units\n`;
+
+    // Add direction to platform
+    const platformDirection = getDirectionTo(characterPosition, { x: 10, z: 10 });
+    textMap += `Platform is to the ${platformDirection} of you\n`;
+    
+    // Add path finding hint
+    if (nearbyObjects.some(obj => obj.type === 'path')) {
+        textMap += "TIP: Following paths may lead to interesting locations\n";
+    }
+    
+    // Add seasonal information
+    const season = window.currentSeason || 'Summer';
+    textMap += `\nCurrent season: ${season}\n`;
+    
+    switch(season) {
+        case 'Spring':
+            textMap += "The forest is blooming with colorful flowers and new growth.\n";
+            break;
+        case 'Summer':
+            textMap += "The forest is lush and green, with beehives active among the trees.\n";
+            break;
+        case 'Autumn':
+            textMap += "The forest floor is covered with fallen leaves and mushrooms.\n";
+            break;
+        case 'Winter':
+            textMap += "A blanket of snow covers the landscape, with occasional snowmen.\n";
+            break;
+    }
+
+    return textMap;
+}
+
+// Helper function to get full object name
+function getObjectFullName(type, subType) {
+    switch(type) {
+        case 'house':
+            return subType === 'cabin' ? 'Wooden Cabin' : 
+                   subType === 'cottage' ? 'Stone Cottage' : 
+                   subType === 'manor' ? 'Large Manor House' : 'House';
+        case 'tree':
+            return subType === 'pine' ? 'Pine Tree' : 'Deciduous Tree';
+        case 'water':
+            return 'Pond with Lily Pads';
+        case 'rock':
+            return subType === 'mossy' ? 'Large Mossy Rock' : 'Small Rock';
+        case 'furniture':
+            return 'Wooden Bench';
+        case 'fence':
+            return 'Wooden Fence';
+        case 'path':
+            return 'Dirt Path';
+        case 'landmark':
+            return subType === 'well' ? 'Stone Well' : 
+                   subType === 'statue' ? 'Stone Statue' : 
+                   subType === 'pathSign' ? 'Wooden Path Sign' : 'Landmark';
+        case 'wildlife':
+            return subType === 'deer' ? 'Deer' : 
+                   subType === 'rabbit' ? 'Rabbit' : 
+                   subType === 'fox' ? 'Fox' : 'Wildlife';
+        case 'seasonal':
+            return subType === 'flowers' ? 'Flower Patch' : 
+                   subType === 'beehive' ? 'Beehive in Tree Stump' : 
+                   subType === 'mushrooms' ? 'Mushroom Cluster' : 
+                   subType === 'snowman' ? 'Snowman' : 'Seasonal Feature';
+        default:
+            return 'Unknown Object';
+    }
+}
+
+// Helper function to determine if an object type is collidable
+function isCollidable(type) {
+    return ['house', 'tree', 'rock', 'fence', 'landmark', 'water'].includes(type);
+}
+
+// Helper function to get cardinal direction between two points
+function getDirectionTo(fromPos, toPos) {
+    const dx = toPos.x - fromPos.x;
+    const dz = toPos.z - fromPos.z;
+    
+    // Calculate angle in radians
+    const angle = Math.atan2(dz, dx);
+    
+    // Convert to 8 cardinal directions
+    const octant = Math.round(8 * angle / (2 * Math.PI) + 8) % 8;
+    
+    const directions = [
+        "East", "Northeast", "North", "Northwest", 
+        "West", "Southwest", "South", "Southeast"
+    ];
+    
+    return directions[octant];
+}
+
+// Enhanced chunk update for infinite world with better object tracking
+function updateVisibleChunks() {
+    if (!character?.isLoaded) return;
+
+    const { x, z } = getChunkCoords(character.position.x, character.position.z);
+    const dx = Math.abs(character.position.x - lastChunkUpdatePosition.x);
+    const dz = Math.abs(character.position.z - lastChunkUpdatePosition.z);
+
+    // Force update on first load or when moved significantly
+    const shouldUpdate = activeChunks.size === 0 || dx > updateThreshold || dz > updateThreshold;
+
+    if (!shouldUpdate) return;
+
+    lastChunkUpdatePosition = { x: character.position.x, z: character.position.z };
+
+    console.log("Updating chunks at", x, z);
+
+    // Load nearby chunks
+    for (let offsetX = -chunksVisibleInViewDistance; offsetX <= chunksVisibleInViewDistance; offsetX++) {
+        for (let offsetZ = -chunksVisibleInViewDistance; offsetZ <= chunksVisibleInViewDistance; offsetZ++) {
+            createTerrainChunk(x + offsetX, z + offsetZ);
+        }
+    }
+
+    // Unload distant chunks to keep scene lightweight
+    for (const [key, chunk] of loadedChunks.entries()) {
+        const [chunkX, chunkZ] = key.split(',').map(Number);
+        const distance = Math.max(Math.abs(x - chunkX), Math.abs(z - chunkZ));
+        if (distance > chunksVisibleInViewDistance + 1) {
+            scene.remove(chunk);
+            loadedChunks.delete(key);
+            activeChunks.delete(key);
+        }
+    }
+    
+    // Update collision detection data
+    updateCollisionData();
+}
+
+// NEW: Update collision detection data
+function updateCollisionData() {
+    // Reset collision data
+    window.collisionObjects = [];
+    
+    // Scan all loaded chunks for collidable objects
+    for (const [chunkKey, chunk] of loadedChunks.entries()) {
+        if (chunk.userData.objectRegistry) {
+            for (const obj of chunk.userData.objectRegistry) {
+                if (isCollidable(obj.type)) {
+                    // Add to collision objects with appropriate collision radius
+                    let collisionRadius = 1; // Default
+                    
+                    switch(obj.type) {
+                        case 'house':
+                            collisionRadius = obj.subType === 'manor' ? 4 : 
+                                             obj.subType === 'cottage' ? 3 : 2;
+                            break;
+                        case 'tree':
+                            collisionRadius = 1.5;
+                            break;
+                        case 'rock':
+                            collisionRadius = obj.subType === 'mossy' ? 1.5 : 0.5;
+                            break;
+                        case 'fence':
+                            collisionRadius = 0.5;
+                            break;
+                        case 'landmark':
+                            collisionRadius = obj.subType === 'well' ? 1.5 : 1;
+                            break;
+                        case 'water':
+                            collisionRadius = 2;
+                            break;
+                    }
+                    
+                    window.collisionObjects.push({
+                        x: obj.worldX,
+                        z: obj.worldZ,
+                        radius: collisionRadius,
+                        type: obj.type,
+                        subType: obj.subType
+                    });
+                }
+            }
+        }
+    }
+}
+
+// NEW: Season management
+function initializeSeasons() {
+    // Set initial season
+    window.currentSeason = 'Summer';
+    
+    // Add season cycling if needed
+    window.cycleSeason = function() {
+        const seasons = ['Spring', 'Summer', 'Autumn', 'Winter'];
+        const currentIndex = seasons.indexOf(window.currentSeason);
+        window.currentSeason = seasons[(currentIndex + 1) % seasons.length];
+        
+        // Update ground material based on season
+        updateSeasonalAppearance();
+        
+        console.log("Season changed to:", window.currentSeason);
+        return window.currentSeason;
+    };
+    
+    // Add season-specific appearance updates
+    function updateSeasonalAppearance() {
+        switch(window.currentSeason) {
+            case 'Spring':
+                groundMaterial.color.setHex(0x7CFC00); // Bright green
+                break;
+            case 'Summer':
+                groundMaterial.color.setHex(0x228B22); // Forest green
+                break;
+            case 'Autumn':
+                groundMaterial.color.setHex(0xDAA520); // Golden rod
+                break;
+            case 'Winter':
+                groundMaterial.color.setHex(0xFFFAFA); // Snow white
+                break;
+        }
+    }
+}
+
+// Call season initialization
+initializeSeasons();
 
         // AI Movement Control with local model inference
         async function getAIMovementInstructions(currentPosition, previousActions = [], hitObstacle = false) {
