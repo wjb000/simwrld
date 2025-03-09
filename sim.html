@@ -3425,6 +3425,130 @@ Previous actions: ${JSON.stringify(previousActions.slice(-3))}`
         }
 
         animate();
+
+// Global audio player and playlist variables
+let audioPlayer = null;
+let playlist = [];
+let currentSongIndex = -1;
+
+// Function to load the music playlist and start playing
+function initializeBackgroundMusic() {
+    fetch('http://localhost:5000/available-music')
+        .then(response => response.json())
+        .then(data => {
+            if (data.music_files && data.music_files.length > 0) {
+                // Save the playlist
+                playlist = data.music_files;
+                
+                // Shuffle the playlist for variety
+                shufflePlaylist();
+                
+                // Create audio player if it doesn't exist
+                if (!audioPlayer) {
+                    audioPlayer = new Audio();
+                    audioPlayer.volume = 0.3; // Set volume to 30%
+                    
+                    // Set up event listener for when a song ends
+                    audioPlayer.addEventListener('ended', playNextSong);
+                }
+                
+                console.log("Music playlist loaded with " + playlist.length + " songs");
+            } else {
+                console.log("No music files available");
+            }
+        })
+        .catch(error => console.error("Error loading music:", error));
+}
+
+// Function to shuffle the playlist
+function shufflePlaylist() {
+    // Fisher-Yates shuffle algorithm
+    for (let i = playlist.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [playlist[i], playlist[j]] = [playlist[j], playlist[i]];
+    }
+    // Reset the current song index
+    currentSongIndex = -1;
+}
+
+// Function to play the next song in the playlist
+function playNextSong() {
+    if (playlist.length === 0) return;
+    
+    // Move to the next song, or loop back to the beginning
+    currentSongIndex = (currentSongIndex + 1) % playlist.length;
+    
+    // Get the next song filename
+    const nextSong = playlist[currentSongIndex];
+    
+    // Set the new source and play
+    audioPlayer.src = `http://localhost:5000/music/${nextSong}`;
+    audioPlayer.play()
+        .then(() => console.log(`Now playing (${currentSongIndex + 1}/${playlist.length}): ${nextSong}`))
+        .catch(e => console.log("Audio playback failed:", e));
+}
+
+// Function to start playing music (call this after user interaction)
+function startBackgroundMusic() {
+    if (playlist.length > 0 && audioPlayer) {
+        playNextSong();
+    } else {
+        console.log("Playlist not loaded yet");
+    }
+}
+
+// Add a music control button
+function addMusicControls() {
+    const musicButton = document.createElement('button');
+    musicButton.textContent = '🎵 Play Music';
+    musicButton.style.position = 'fixed';
+    musicButton.style.bottom = '80px';
+    musicButton.style.right = '20px';
+    musicButton.style.zIndex = '1000';
+    musicButton.style.padding = '8px 12px';
+    musicButton.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+    musicButton.style.color = 'white';
+    musicButton.style.border = 'none';
+    musicButton.style.borderRadius = '4px';
+    musicButton.style.cursor = 'pointer';
+    
+    // Add next song button
+    const nextButton = document.createElement('button');
+    nextButton.textContent = '⏭️ Next';
+    nextButton.style.position = 'fixed';
+    nextButton.style.bottom = '80px';
+    nextButton.style.right = '150px';
+    nextButton.style.zIndex = '1000';
+    nextButton.style.padding = '8px 12px';
+    nextButton.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+    nextButton.style.color = 'white';
+    nextButton.style.border = 'none';
+    nextButton.style.borderRadius = '4px';
+    nextButton.style.cursor = 'pointer';
+    nextButton.style.display = 'none'; // Hide initially
+    
+    musicButton.addEventListener('click', () => {
+        startBackgroundMusic();
+        musicButton.textContent = '🎵 Music Playing';
+        nextButton.style.display = 'block'; // Show next button
+    });
+    
+    nextButton.addEventListener('click', () => {
+        playNextSong();
+    });
+    
+    document.body.appendChild(musicButton);
+    document.body.appendChild(nextButton);
+}
+
+// Initialize everything when the page loads
+document.addEventListener('DOMContentLoaded', () => {
+    // Load the playlist immediately
+    initializeBackgroundMusic();
+    
+    // Add music controls
+    addMusicControls();
+});
     </script>
 </body>
 
